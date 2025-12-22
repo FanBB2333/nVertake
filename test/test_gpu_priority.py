@@ -76,6 +76,30 @@ def _strict_pmon_asserts_enabled() -> bool:
     return _env_truthy("NVERTAKE_STRICT_GPU_PMON")
 
 
+def _report_table_enabled() -> bool:
+    return _env_truthy("NVERTAKE_PRINT_MARKDOWN_TABLE")
+
+
+def _pct(delta: float) -> float:
+    return delta * 100.0
+
+
+def _fmt_seconds(value: float) -> str:
+    return f"{value:.4f}"
+
+
+def _fmt_ratio(value: float) -> str:
+    return f"{value:.2f}x"
+
+
+def _print_markdown_table(rows: List[Tuple[str, str]]) -> None:
+    # Keep formatting stable for copy-paste into README/issues.
+    print("\n| Metric | Value |")
+    print("|---|---:|")
+    for metric, value in rows:
+        print(f"| {metric} | {value} |")
+
+
 @dataclass(frozen=True)
 class _MatmulWorkload:
     matrix_size: int
@@ -472,6 +496,85 @@ class TestStreamPriorityWithinProcess(unittest.TestCase):
             low_median,
             "Expected high-priority stream to reduce probe latency under contention.",
         )
+
+    @unittest.skipUnless(
+        _gpu_tests_enabled(device) and _report_table_enabled(),
+        "Requires CUDA, NVERTAKE_ENABLE_GPU_TESTS=1 and NVERTAKE_PRINT_MARKDOWN_TABLE=1",
+    )
+    def test_print_markdown_table(self):
+        """
+        Convenience reporting test: prints a small markdown table with concrete numbers.
+
+        Run with:
+          NVERTAKE_ENABLE_GPU_TESTS=1 NVERTAKE_PRINT_MARKDOWN_TABLE=1 pytest -q -s \
+            test/test_gpu_priority.py::TestStreamPriorityWithinProcess::test_print_markdown_table
+        """
+        device = self.device
+        torch.cuda.set_device(device)
+
+        dtype = torch.float16
+        matrix_size = _pick_matmul_size(device, dtype)
+        workload = _calibrate_iters(device=device, matrix_size=matrix_size, dtype=dtype)
+
+        background_stream = torch.cuda.Stream(device=device, priority=0)
+        probe_stream_default = torch.cuda.Stream(device=device, priority=0)
+        scheduler = PriorityScheduler(device=device, nice_value=0)
+        probe_stream_high = scheduler.get_high_priority_stream()
+        self.assertIsNotNone(probe_stream_high)
+
+        background_tensors = _allocate_mm_tensors(
+            device=device,
+            matrix_size=workload.matrix_size,
+            dtype=workload.dtype,
+            seed=123,
+        )
+        probe_tensors = _allocate_mm_tensors(
+            device=device,
+            matrix_size=workload.matrix_size,
+            dtype=workload.dtype,
+            seed=456,
+        )
+
+        torch.cuda.synchronize(device)
+        start_time = time.perf_counter()
+        with torch.cuda.stream(probe_stream_default):
+            for _ in range(workload.probe_iters):
+                torch.mm(probe_tensors[0], probe_tensors[1], out=probe_tensors[2])
+        probe_stream_default.synchronize()
+        baseline_seconds = time.perf_counter() - start_time
+
+        contended_default_seconds = _measure_probe_latency_seconds(
+            device=device,
+            workload=workload,
+            background_stream=background_stream,
+            probe_stream=probe_stream_default,
+            background_tensors=background_tensors,
+            probe_tensors=probe_tensors,
+        )
+        contended_high_seconds = _measure_probe_latency_seconds(
+            device=device,
+            workload=workload,
+            background_stream=background_stream,
+            probe_stream=probe_stream_high,
+            background_tensors=background_tensors,
+            probe_tensors=probe_tensors,
+        )
+
+        speedup = contended_default_seconds / max(1e-9, contended_high_seconds)
+        improvement = (1.0 - contended_high_seconds / max(1e-9, contended_default_seconds))
+
+        rows = [
+            ("device", str(device)),
+            ("matrix_size", str(workload.matrix_size)),
+            ("probe_iters", str(workload.probe_iters)),
+            ("background_iters", str(workload.background_iters)),
+            ("baseline_probe_seconds", _fmt_seconds(baseline_seconds)),
+            ("contended_default_seconds", _fmt_seconds(contended_default_seconds)),
+            ("contended_high_seconds", _fmt_seconds(contended_high_seconds)),
+            ("speedup_default_over_high", _fmt_ratio(speedup)),
+            ("latency_improvement", f"{_pct(improvement):.1f}%"),
+        ]
+        _print_markdown_table(rows)
 
 
 class TestProcessSmShareWithPmon(unittest.TestCase):

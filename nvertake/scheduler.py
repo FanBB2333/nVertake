@@ -70,7 +70,7 @@ class PriorityScheduler:
             except OSError:
                 pass
     
-    def get_high_priority_stream(self) -> torch.cuda.Stream:
+    def get_high_priority_stream(self) -> Optional[torch.cuda.Stream]:
         """
         Get or create a high-priority CUDA stream.
         
@@ -79,19 +79,33 @@ class PriorityScheduler:
         - Low priority: 0
         
         Returns:
-            A high-priority CUDA stream
+            A high-priority CUDA stream when CUDA is available, otherwise None
         """
         if self._high_priority_stream is None:
-            if torch.cuda.is_available():
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    cuda_available = bool(torch.cuda.is_available())
+                except Exception:
+                    cuda_available = False
+
+            if not cuda_available:
+                logger.warning("CUDA not available, cannot create high-priority stream")
+                return None
+
+            try:
                 with torch.cuda.device(self.device):
                     # Priority -1 is high priority, 0 is low priority
                     self._high_priority_stream = torch.cuda.Stream(
                         device=self.device,
-                        priority=-1  # High priority
+                        priority=-1,  # High priority
                     )
                     logger.info(f"Created high-priority CUDA stream on device {self.device}")
-            else:
-                logger.warning("CUDA not available, cannot create high-priority stream")
+            except Exception as e:
+                logger.warning(f"Failed to create high-priority CUDA stream: {e}")
+                return None
         return self._high_priority_stream
     
     @contextmanager

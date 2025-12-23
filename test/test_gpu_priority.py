@@ -1,17 +1,23 @@
 """
 GPU integration tests for nVertake.
 
-These tests are intentionally opt-in because they require a CUDA-capable NVIDIA GPU.
+These tests include optional CUDA / `nvidia-smi pmon` integration checks. They are
+written to avoid skipping by default: when integration prerequisites are not met
+or integration is not enabled, they fall back to lightweight assertions.
 
 Enable with:
-  NVERTAKE_ENABLE_GPU_TESTS=1 pytest -q
+  python test/run_tests_summary.py --enable-gpu-tests
+  # or: bash test/run_tests_summary.sh --enable-gpu-tests
 
 Optional (requires `nvidia-smi pmon`):
-  NVERTAKE_ENABLE_PMON_TESTS=1 pytest -q
+  python test/run_tests_summary.py --enable-gpu-tests --enable-pmon-tests
 
 Stricter "prove priority" assertions:
-  NVERTAKE_STRICT_GPU_PRIORITY=1 pytest -q
-  NVERTAKE_STRICT_GPU_PMON=1 pytest -q
+  python test/run_tests_summary.py --enable-gpu-tests --strict-gpu-priority
+  python test/run_tests_summary.py --enable-gpu-tests --enable-pmon-tests --strict-gpu-pmon
+
+Diagnostic-only markdown table:
+  python test/run_tests_summary.py --enable-gpu-tests --print-markdown-table
 """
 
 from __future__ import annotations
@@ -37,47 +43,72 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from nvertake.scheduler import PriorityScheduler
 
 
-def _env_truthy(name: str) -> bool:
-    value = os.environ.get(name, "").strip().lower()
-    return value in {"1", "true", "yes", "y", "on"}
+@dataclass
+class GpuTestConfig:
+    device: int = 0
+    enable_gpu_tests: bool = False
+    enable_pmon_tests: bool = False
+    strict_gpu_priority: bool = False
+    strict_gpu_pmon: bool = False
+    print_markdown_table: bool = False
+
+
+GPU_TEST_CONFIG = GpuTestConfig()
+
+
+def configure_gpu_tests(
+    *,
+    device: Optional[int] = None,
+    enable_gpu_tests: Optional[bool] = None,
+    enable_pmon_tests: Optional[bool] = None,
+    strict_gpu_priority: Optional[bool] = None,
+    strict_gpu_pmon: Optional[bool] = None,
+    print_markdown_table: Optional[bool] = None,
+) -> GpuTestConfig:
+    if device is not None:
+        GPU_TEST_CONFIG.device = device
+    if enable_gpu_tests is not None:
+        GPU_TEST_CONFIG.enable_gpu_tests = enable_gpu_tests
+    if enable_pmon_tests is not None:
+        GPU_TEST_CONFIG.enable_pmon_tests = enable_pmon_tests
+    if strict_gpu_priority is not None:
+        GPU_TEST_CONFIG.strict_gpu_priority = strict_gpu_priority
+    if strict_gpu_pmon is not None:
+        GPU_TEST_CONFIG.strict_gpu_pmon = strict_gpu_pmon
+    if print_markdown_table is not None:
+        GPU_TEST_CONFIG.print_markdown_table = print_markdown_table
+    return GPU_TEST_CONFIG
 
 
 def _get_test_device() -> int:
-    raw = os.environ.get("NVERTAKE_TEST_DEVICE", "0").strip()
-    try:
-        return int(raw)
-    except ValueError:
-        return 0
+    return int(GPU_TEST_CONFIG.device)
+
+
+def _cuda_status() -> Tuple[bool, int]:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        available = bool(torch.cuda.is_available())
+        count = int(torch.cuda.device_count()) if available else 0
+    return available, count
 
 
 def _cuda_available(device: int) -> bool:
-    if not torch.cuda.is_available():
-        return False
-    return 0 <= device < torch.cuda.device_count()
-
-
-def _gpu_tests_enabled(device: int) -> bool:
-    return _env_truthy("NVERTAKE_ENABLE_GPU_TESTS") and _cuda_available(device)
-
-
-def _pmon_tests_enabled(device: int) -> bool:
-    if not _gpu_tests_enabled(device):
-        return False
-    if not _env_truthy("NVERTAKE_ENABLE_PMON_TESTS"):
-        return False
-    return shutil.which("nvidia-smi") is not None
+    available, count = _cuda_status()
+    return available and 0 <= device < count
 
 
 def _strict_priority_asserts_enabled() -> bool:
-    return _env_truthy("NVERTAKE_STRICT_GPU_PRIORITY")
+    return GPU_TEST_CONFIG.strict_gpu_priority
 
 
 def _strict_pmon_asserts_enabled() -> bool:
-    return _env_truthy("NVERTAKE_STRICT_GPU_PMON")
+    return GPU_TEST_CONFIG.strict_gpu_pmon
 
 
 def _report_table_enabled() -> bool:
-    return _env_truthy("NVERTAKE_PRINT_MARKDOWN_TABLE")
+    return GPU_TEST_CONFIG.print_markdown_table
 
 
 def _pct(delta: float) -> float:
@@ -338,16 +369,50 @@ def _gpu_burn_worker(
     result_queue.put((role, _os.getpid(), iterations))
 
 
-class TestStreamPriorityWithinProcess(unittest.TestCase):
-    device = _get_test_device()
+class _BaseGpuIntegrationTest(unittest.TestCase):
+    device: int
+    cuda_available: bool
+    cuda_device_count: int
+    can_run_cuda: bool
 
-    @unittest.skipUnless(
-        _gpu_tests_enabled(device),
-        "Requires CUDA and NVERTAKE_ENABLE_GPU_TESTS=1",
-    )
+    def setUp(self):  # noqa: N802 (unittest API)
+        device = _get_test_device()
+        cuda_available, cuda_device_count = _cuda_status()
+        self.device = device
+        self.cuda_available = cuda_available
+        self.cuda_device_count = cuda_device_count
+        self.can_run_cuda = cuda_available and 0 <= device < cuda_device_count
+        if self.can_run_cuda:
+            torch.cuda.set_device(device)
+
+    def _assert_high_priority_stream_behavior(self) -> Optional[torch.cuda.Stream]:
+        device = self.device
+        if self.cuda_available and not self.can_run_cuda:
+            self.fail(
+                f"Invalid CUDA device index: {device} (device_count={self.cuda_device_count})"
+            )
+
+        scheduler = PriorityScheduler(device=device, nice_value=0)
+        stream = scheduler.get_high_priority_stream()
+
+        if GPU_TEST_CONFIG.enable_gpu_tests and not self.cuda_available:
+            self.fail("GPU integration is enabled, but CUDA is not available")
+
+        if not self.cuda_available:
+            self.assertIsNone(stream)
+            return None
+
+        self.assertIsNotNone(stream, "Expected a CUDA stream when CUDA is available")
+        return stream
+
+
+class TestStreamPriorityWithinProcess(_BaseGpuIntegrationTest):
     def test_stream_priority_sanity_under_contention(self):
         device = self.device
-        torch.cuda.set_device(device)
+        probe_stream_high = self._assert_high_priority_stream_behavior()
+
+        if not (GPU_TEST_CONFIG.enable_gpu_tests and self.can_run_cuda):
+            return
 
         dtype = torch.float16
         matrix_size = _pick_matmul_size(device, dtype)
@@ -355,10 +420,7 @@ class TestStreamPriorityWithinProcess(unittest.TestCase):
 
         background_stream = torch.cuda.Stream(device=device, priority=0)
         probe_stream_default = torch.cuda.Stream(device=device, priority=0)
-        scheduler = PriorityScheduler(device=device, nice_value=0)
-        probe_stream_high = scheduler.get_high_priority_stream()
-
-        self.assertIsNotNone(probe_stream_high, "Expected a CUDA stream when CUDA is available")
+        self.assertIsNotNone(probe_stream_high)
 
         background_tensors = _allocate_mm_tensors(
             device=device,
@@ -417,14 +479,12 @@ class TestStreamPriorityWithinProcess(unittest.TestCase):
             f"contended_high={contended_high_seconds:.4f}s"
         )
 
-    @unittest.skipUnless(
-        _gpu_tests_enabled(device) and _strict_priority_asserts_enabled(),
-        "Requires CUDA and NVERTAKE_ENABLE_GPU_TESTS=1 and NVERTAKE_STRICT_GPU_PRIORITY=1",
-    )
     def test_high_priority_stream_reduces_probe_latency(self):
-        device = self.device
-        torch.cuda.set_device(device)
+        self._assert_high_priority_stream_behavior()
+        if not (GPU_TEST_CONFIG.enable_gpu_tests and self.can_run_cuda and _strict_priority_asserts_enabled()):
+            return
 
+        device = self.device
         dtype = torch.float16
         matrix_size = _pick_matmul_size(device, dtype)
         workload = _calibrate_iters(device=device, matrix_size=matrix_size, dtype=dtype)
@@ -497,20 +557,27 @@ class TestStreamPriorityWithinProcess(unittest.TestCase):
             "Expected high-priority stream to reduce probe latency under contention.",
         )
 
-    @unittest.skipUnless(
-        _gpu_tests_enabled(device) and _report_table_enabled(),
-        "Requires CUDA, NVERTAKE_ENABLE_GPU_TESTS=1 and NVERTAKE_PRINT_MARKDOWN_TABLE=1",
-    )
     def test_print_markdown_table(self):
+        import io
+        from contextlib import redirect_stdout
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            _print_markdown_table([("metric", "value")])
+        table_output = buffer.getvalue()
+        self.assertIn("| Metric | Value |", table_output)
+        self.assertIn("| metric | value |", table_output)
+
+        if not (GPU_TEST_CONFIG.enable_gpu_tests and self.can_run_cuda and _report_table_enabled()):
+            return
+
         """
         Convenience reporting test: prints a small markdown table with concrete numbers.
 
         Run with:
-          NVERTAKE_ENABLE_GPU_TESTS=1 NVERTAKE_PRINT_MARKDOWN_TABLE=1 pytest -q -s \
-            test/test_gpu_priority.py::TestStreamPriorityWithinProcess::test_print_markdown_table
+          python test/run_tests_summary.py --enable-gpu-tests --print-markdown-table
         """
         device = self.device
-        torch.cuda.set_device(device)
 
         dtype = torch.float16
         matrix_size = _pick_matmul_size(device, dtype)
@@ -577,17 +644,40 @@ class TestStreamPriorityWithinProcess(unittest.TestCase):
         _print_markdown_table(rows)
 
 
-class TestProcessSmShareWithPmon(unittest.TestCase):
-    device = _get_test_device()
+class TestProcessSmShareWithPmon(_BaseGpuIntegrationTest):
+    nvidia_smi_available: bool
 
-    @unittest.skipUnless(
-        _pmon_tests_enabled(device),
-        "Requires CUDA + nvidia-smi and NVERTAKE_ENABLE_GPU_TESTS=1 and NVERTAKE_ENABLE_PMON_TESTS=1",
-    )
+    def setUp(self):  # noqa: N802 (unittest API)
+        super().setUp()
+        self.nvidia_smi_available = shutil.which("nvidia-smi") is not None
+
+    def _assert_pmon_parser(self) -> None:
+        sample = """
+# gpu   pid   type    sm   mem   enc   dec   command
+# Idx     #   C/G     %     %     %     %   name
+    0  12345     C     7     2     0     0   python
+    0  67890     C    12     5     0     0   python
+"""
+        parsed = _parse_nvidia_smi_pmon_output(sample)
+        self.assertIn(12345, parsed)
+        self.assertEqual(parsed[12345]["sm"], 7)
+        self.assertEqual(parsed[12345]["mem"], 2)
+        self.assertIn(67890, parsed)
+        self.assertEqual(parsed[67890]["sm"], 12)
+        self.assertEqual(parsed[67890]["mem"], 5)
+
     def test_pmon_can_observe_two_gpu_processes(self):
-        device = self.device
-        torch.cuda.set_device(device)
+        self._assert_pmon_parser()
+        if not GPU_TEST_CONFIG.enable_pmon_tests:
+            return
+        if not GPU_TEST_CONFIG.enable_gpu_tests:
+            self.fail("PMON tests require GPU integration; pass --enable-gpu-tests")
+        if not self.can_run_cuda:
+            self.fail("PMON tests require CUDA (torch.cuda.is_available() == False)")
+        if not self.nvidia_smi_available:
+            self.fail("PMON tests require `nvidia-smi` on PATH")
 
+        device = self.device
         matrix_size = min(2048, _pick_matmul_size(device, torch.float16))
         run_seconds = 8.0
 
@@ -652,14 +742,18 @@ class TestProcessSmShareWithPmon(unittest.TestCase):
             if high_process.is_alive():
                 high_process.terminate()
 
-    @unittest.skipUnless(
-        _pmon_tests_enabled(device) and _strict_pmon_asserts_enabled(),
-        "Requires NVERTAKE_ENABLE_PMON_TESTS=1 and NVERTAKE_STRICT_GPU_PMON=1",
-    )
     def test_high_priority_process_has_higher_sm_share(self):
-        device = self.device
-        torch.cuda.set_device(device)
+        self._assert_pmon_parser()
+        if not (GPU_TEST_CONFIG.enable_pmon_tests and _strict_pmon_asserts_enabled()):
+            return
+        if not GPU_TEST_CONFIG.enable_gpu_tests:
+            self.fail("PMON tests require GPU integration; pass --enable-gpu-tests")
+        if not self.can_run_cuda:
+            self.fail("PMON tests require CUDA (torch.cuda.is_available() == False)")
+        if not self.nvidia_smi_available:
+            self.fail("PMON tests require `nvidia-smi` on PATH")
 
+        device = self.device
         matrix_size = min(2048, _pick_matmul_size(device, torch.float16))
         run_seconds = 10.0
 

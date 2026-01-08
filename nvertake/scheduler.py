@@ -6,11 +6,14 @@ import os
 import sys
 import subprocess
 from contextlib import contextmanager
-from typing import Optional, List
+from functools import wraps
+from typing import Callable, Optional, List, TypeVar, Any, cast, Union
 
 import torch
 
 from .utils import logger
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class PriorityScheduler:
@@ -180,3 +183,37 @@ def run_with_priority(
         return 1
     finally:
         scheduler.restore_cpu_priority()
+
+
+def inject_priority(
+    func: Optional[F] = None,
+    *,
+    device: int = 0,
+    nice_value: int = -10,
+) -> Union[F, Callable[[F], F]]:
+    """
+    Decorator to run a function inside nVertake's priority context.
+
+    This is sugar for:
+        scheduler = PriorityScheduler(device=..., nice_value=...)
+        with scheduler.priority_context():
+            ...
+
+    Usage:
+        @inject_priority(device=0, nice_value=-10)
+        def train():
+            ...
+    """
+
+    def decorator(target: F) -> F:
+        @wraps(target)
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
+            scheduler = PriorityScheduler(device=device, nice_value=nice_value)
+            with scheduler.priority_context():
+                return target(*args, **kwargs)
+
+        return cast(F, wrapped)
+
+    if func is None:
+        return decorator
+    return decorator(func)

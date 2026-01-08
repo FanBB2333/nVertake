@@ -5,6 +5,7 @@ Unit tests for nVertake package.
 import os
 import sys
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 
 # Add parent directory to path to import nvertake
@@ -76,6 +77,27 @@ class TestScheduler(unittest.TestCase):
         result = scheduler.set_cpu_priority()
         
         self.assertFalse(result)
+
+    @patch("nvertake.scheduler.PriorityScheduler")
+    def test_inject_priority_decorator(self, mock_scheduler_cls):
+        """Test @inject_priority decorator wiring."""
+        from nvertake.scheduler import inject_priority
+
+        @contextmanager
+        def dummy_ctx():
+            yield None
+
+        scheduler = MagicMock()
+        scheduler.priority_context.return_value = dummy_ctx()
+        mock_scheduler_cls.return_value = scheduler
+
+        @inject_priority(device=2, nice_value=-5)
+        def add_one(x):
+            return x + 1
+
+        self.assertEqual(add_one(41), 42)
+        mock_scheduler_cls.assert_called_once_with(device=2, nice_value=-5)
+        scheduler.priority_context.assert_called_once()
 
 
 class TestMemoryManager(unittest.TestCase):

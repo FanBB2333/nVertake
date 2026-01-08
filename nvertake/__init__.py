@@ -10,10 +10,12 @@ __author__ = "nVertake Authors"
 
 from .scheduler import PriorityScheduler
 from .memory import MemoryManager, fill_gpu_memory
+from .scheduler import inject_priority
 
 __all__ = [
     "__version__",
     "PriorityScheduler",
+    "inject_priority",
     "MemoryManager",
     "fill_gpu_memory",
 ]

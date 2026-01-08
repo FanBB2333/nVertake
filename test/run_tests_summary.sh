@@ -14,6 +14,7 @@ set -euo pipefail
 #   bash test/run_tests_summary.sh strict --device 0
 #   bash test/run_tests_summary.sh strict-pmon --device 0
 #   bash test/run_tests_summary.sh report --device 0
+#   bash test/run_tests_summary.sh overtake
 #
 #   # Or forward any args directly to the Python runner:
 #   bash test/run_tests_summary.sh --json test/test_summary.json
@@ -39,6 +40,7 @@ Modes:
   strict       Run tests with --enable-gpu-tests --strict-gpu-priority
   strict-pmon  Run tests with --enable-gpu-tests --enable-pmon-tests --strict-gpu-pmon
   report       Run tests with --enable-gpu-tests --print-markdown-table
+  overtake     Run resident-vs-invader throughput benchmark
 
 Any extra args are forwarded to test/run_tests_summary.py.
 Examples:
@@ -76,6 +78,9 @@ case "${MODE}" in
     ;;
   report)
     set -- --enable-gpu-tests --print-markdown-table "$@"
+    ;;
+  overtake)
+    exec bash "${REPO_ROOT}/test/run_overtake_benchmark.sh" "$@"
     ;;
   help|-h|--help)
     usage

@@ -7,7 +7,7 @@ This is a small convenience wrapper around `unittest` discovery that also:
   - lists failing/errored tests
   - optionally writes a JSON summary (useful for CI logs)
 
-GPU integration tests are opt-in; this runner configures them directly via
+Real-GPU integration tests are opt-in; this runner configures them directly via
 CLI switches (no environment variables required).
 """
 
@@ -212,10 +212,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="write summary JSON to this path",
     )
 
-    # Convenience switches for GPU integration tests (opt-in).
+    # Convenience switches for real-GPU integration tests (opt-in).
     parser.add_argument("--device", type=int, default=0, help="CUDA device index for GPU tests")
-    parser.add_argument("--enable-gpu-tests", action="store_true", help="enable CUDA integration tests")
-    parser.add_argument("--enable-pmon-tests", action="store_true", help="enable `nvidia-smi pmon` tests")
+    parser.add_argument("--enable-gpu-tests", action="store_true", help="enable real-GPU CUDA integration tests")
+    parser.add_argument("--enable-pmon-tests", action="store_true", help="enable real-GPU `nvidia-smi pmon` tests")
     parser.add_argument(
         "--strict-gpu-priority",
         action="store_true",

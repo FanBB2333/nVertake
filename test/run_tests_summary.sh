@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # Shell wrapper for running the test suite with the Python summarizer.
+# GPU-oriented modes target real NVIDIA GPUs with CUDA-enabled PyTorch.
 #
 # Usage:
 #   # Run everything (GPU tests are opt-in; will be skipped by default)
@@ -35,12 +36,12 @@ Usage:
 Modes:
   all          Run all tests (default; GPU tests skipped unless enabled)
   unit         Run CPU-only unit tests (test_nvertake.py)
-  gpu          Run tests with --enable-gpu-tests
-  pmon         Run tests with --enable-gpu-tests --enable-pmon-tests
-  strict       Run tests with --enable-gpu-tests --strict-gpu-priority
-  strict-pmon  Run tests with --enable-gpu-tests --enable-pmon-tests --strict-gpu-pmon
+  gpu          Run real-GPU tests with --enable-gpu-tests
+  pmon         Run real-GPU tests with --enable-gpu-tests --enable-pmon-tests
+  strict       Run stricter real-GPU tests with --enable-gpu-tests --strict-gpu-priority
+  strict-pmon  Run stricter real-GPU tests with --enable-gpu-tests --enable-pmon-tests --strict-gpu-pmon
   report       Run tests with --enable-gpu-tests --print-markdown-table
-  overtake     Run resident-vs-invader throughput benchmark
+  overtake     Run the resident-vs-invader benchmark on a real CUDA GPU
 
 Any extra args are forwarded to test/run_tests_summary.py.
 Examples:

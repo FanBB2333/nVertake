@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Resident-vs-invader benchmark for real CUDA hardware.
+# Launches two actual GPU workloads and compares resident throughput with and
+# without nVertake priority injection.
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 

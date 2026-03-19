@@ -1,16 +1,18 @@
 """
-GPU integration tests for nVertake.
+Real-GPU integration tests for nVertake.
 
-These tests include optional CUDA / `nvidia-smi pmon` integration checks. They are
-written to avoid skipping by default: when integration prerequisites are not met
-or integration is not enabled, they fall back to lightweight assertions.
+These tests target real NVIDIA GPUs with CUDA-enabled PyTorch. By default, the
+module still exercises lightweight fallback and parser assertions so the suite
+remains useful on machines without CUDA, but the latency and SM-share checks are
+only meaningful on real hardware.
 
-Enable with:
+Enable the real-GPU paths with:
   python test/run_tests_summary.py --enable-gpu-tests
-  # or: bash test/run_tests_summary.sh --enable-gpu-tests
+  # or: bash test/run_tests_summary.sh gpu --device 0
 
 Optional (requires `nvidia-smi pmon`):
   python test/run_tests_summary.py --enable-gpu-tests --enable-pmon-tests
+  # or: bash test/run_tests_summary.sh pmon --device 0
 
 Stricter "prove priority" assertions:
   python test/run_tests_summary.py --enable-gpu-tests --strict-gpu-priority

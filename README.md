@@ -102,6 +102,19 @@ Commands:
 3. Runs a background thread to monitor and adjust buffer size
 4. Maintains constant total GPU memory usage during script execution
 
+## Testing
+
+nVertake's validation targets real NVIDIA GPUs with CUDA-enabled PyTorch. The
+repository does not depend on FakeGPU for its main test flow.
+
+- CPU/unit checks: `bash test/run_tests_summary.sh unit`
+- Real-GPU integration checks: `bash test/run_tests_summary.sh gpu --device 0`
+- `nvidia-smi pmon` checks: `bash test/run_tests_summary.sh pmon --device 0`
+- Resident-vs-invader benchmark: `bash test/run_tests_summary.sh overtake`
+
+See `test/README.md` for the test matrix, prerequisites, and how to interpret
+the generated artifacts.
+
 ## Performance Test (Resident vs Invader)
 
 This benchmark starts 2 programs:
@@ -117,16 +130,18 @@ or:
 bash test/run_tests_summary.sh overtake
 ```
 
-It prints a markdown table you can paste into this README, and saves logs under `test/overtake_output/<timestamp>/`.
+It runs on a real CUDA GPU, prints a markdown table you can paste into this
+README or an issue, and saves logs under `test/overtake_output/<timestamp>/`.
 
-### Overtake Results (Fill With Your Run)
+### Overtake Result Template
 
-Example (FakeGPU, `MATRIX_SIZE=256`, `DTYPE=float32`, `PRE_SECONDS=3`, `INVADE_SECONDS=3`):
+The table below is the expected output shape. Replace it with numbers from your
+own real-GPU run if you want to publish benchmark results.
 
 | Scenario | Native it/s (pre) | Native it/s (during) | Δ (during vs pre) |
 |---|---:|---:|---:|
-| invader_no_nvertake | 4.76 | 4.73 | -0.8% |
-| invader_with_nvertake | 4.47 | 4.59 | +2.6% |
+| invader_no_nvertake | ... | ... | ... |
+| invader_with_nvertake | ... | ... | ... |
 
 ## Requirements
 

@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-05-09T12:58:48+0800",
+  "source_files": [
+    "verification/results/contention_util_20260509.json",
+    "verification/results/own_process_variants_20260509.json"
+  ],
+  "scope": "Real NVIDIA GPU experiments under saturated resident-vs-invader contention. The own-process variant experiment keeps the resident workload fixed and changes only the invader implementation.",
+  "key_findings": [
+    "All measured contention windows were saturated: GPU utilization stayed near 98-100%.",
+    "nVertake's high-priority CUDA stream alone did not improve invader throughput share for the same eager GEMM workload.",
+    "CUDA Graph replay changed the invader workload shape and produced the largest share increase, but that result should be attributed mainly to launch-overhead reduction and workload efficiency rather than stream priority alone.",
+    "Running two own invader replicas increased aggregate invader share, including with nVertake, but it also reduced resident throughput and is not a hard GPU quota mechanism."
+  ],
+  "two_process_stream_priority": {
+    "summary": {
+      "total_loads": 2,
+      "saturated_loads": 2,
+      "nvertake_improved_invader_share_loads": 0,
+      "nvertake_improved_invader_throughput_loads": 0
+    },
+    "loads": [
+      {
+        "load_id": "gemm4096_fp16_batch12",
+        "no_nvertake_gpu_util_mean_percent": 97.6571,
+        "with_nvertake_gpu_util_mean_percent": 98.0,
+        "no_nvertake_invader_share": 0.4505,
+        "with_nvertake_invader_share": 0.4479,
+        "invader_share_delta_points": -0.0026,
+        "invader_throughput_delta_percent": -1.122,
+        "resident_throughput_delta_percent": -0.0788,
+        "saturated_competition": true
+      },
+      {
+        "load_id": "gemm8192_fp16_batch4",
+        "no_nvertake_gpu_util_mean_percent": 99.4848,
+        "with_nvertake_gpu_util_mean_percent": 99.2571,
+        "no_nvertake_invader_share": 0.4316,
+        "with_nvertake_invader_share": 0.4233,
+        "invader_share_delta_points": -0.0082,
+        "invader_throughput_delta_percent": -1.3566,
+        "resident_throughput_delta_percent": 2.025,
+        "saturated_competition": true
+      }
+    ],
+    "conclusion": "For bulk eager GEMM workloads, stream priority alone did not increase full-utilization inter-process GPU resource share."
+  },
+  "own_process_variants": {
+    "fixed_resident_load_id": "resident_gemm8192_fp16_batch4",
+    "summary": {
+      "total_variants": 8,
+      "saturated_variants": 8,
+      "non_control_improved_share_variants": 3,
+      "non_control_improved_tflops_variants": 3,
+      "best_invader_share_variant": "nvertake_cuda_graph",
+      "best_invader_tflops_variant": "nvertake_cuda_graph"
+    },
+    "control": {
+      "variant_id": "control_priority0_single_eager",
+      "gpu_util_mean_percent": 99.5,
+      "invader_tflops_per_sec": 36.921,
+      "resident_tflops_per_sec": 49.519,
+      "invader_share": 0.4271
+    },
+    "variants": [
+      {
+        "variant_id": "nvertake_single_eager",
+        "description": "single invader process, nVertake high-priority stream",
+        "gpu_util_mean_percent": 98.9667,
+        "invader_tflops_per_sec": 36.382,
+        "resident_tflops_per_sec": 49.527,
+        "invader_share": 0.4235,
+        "invader_share_delta_points_vs_control": -0.0036,
+        "invader_tflops_delta_percent_vs_control": -1.4615,
+        "resident_tflops_delta_percent_vs_control": 0.0163
+      },
+      {
+        "variant_id": "priority0_multistream4_eager",
+        "description": "single invader process, four normal-priority CUDA streams",
+        "gpu_util_mean_percent": 98.8667,
+        "invader_tflops_per_sec": 35.949,
+        "resident_tflops_per_sec": 49.658,
+        "invader_share": 0.4199,
+        "invader_share_delta_points_vs_control": -0.0072,
+        "invader_tflops_delta_percent_vs_control": -2.6345,
+        "resident_tflops_delta_percent_vs_control": 0.28
+      },
+      {
+        "variant_id": "nvertake_multistream4_eager",
+        "description": "single invader process, four nVertake high-priority CUDA streams",
+        "gpu_util_mean_percent": 98.3226,
+        "invader_tflops_per_sec": 35.959,
+        "resident_tflops_per_sec": 48.784,
+        "invader_share": 0.4243,
+        "invader_share_delta_points_vs_control": -0.0028,
+        "invader_tflops_delta_percent_vs_control": -2.6057,
+        "resident_tflops_delta_percent_vs_control": -1.4852
+      },
+      {
+        "variant_id": "nvertake_cuda_graph",
+        "description": "single invader process, 4096 GEMM kernels on nVertake stream with CUDA Graph replay",
+        "gpu_util_mean_percent": 99.8696,
+        "invader_tflops_per_sec": 213.797,
+        "resident_tflops_per_sec": 38.771,
+        "invader_share": 0.8465,
+        "invader_share_delta_points_vs_control": 0.4194,
+        "invader_tflops_delta_percent_vs_control": 479.0584,
+        "resident_tflops_delta_percent_vs_control": -21.7052
+      },
+      {
+        "variant_id": "nvertake_small_kernel4096",
+        "description": "single invader process, smaller 4096 eager GEMM kernels on nVertake stream",
+        "gpu_util_mean_percent": 98.9,
+        "invader_tflops_per_sec": 31.365,
+        "resident_tflops_per_sec": 46.446,
+        "invader_share": 0.4031,
+        "invader_share_delta_points_vs_control": -0.024,
+        "invader_tflops_delta_percent_vs_control": -15.0499,
+        "resident_tflops_delta_percent_vs_control": -6.2054
+      },
+      {
+        "variant_id": "priority0_replicas2",
+        "description": "two invader process replicas, normal-priority CUDA streams",
+        "gpu_util_mean_percent": 99.0968,
+        "invader_tflops_per_sec": 36.946,
+        "resident_tflops_per_sec": 41.073,
+        "invader_share": 0.4735,
+        "invader_share_delta_points_vs_control": 0.0464,
+        "invader_tflops_delta_percent_vs_control": 0.0667,
+        "resident_tflops_delta_percent_vs_control": -17.0554
+      },
+      {
+        "variant_id": "nvertake_replicas2",
+        "description": "two invader process replicas, nVertake high-priority streams",
+        "gpu_util_mean_percent": 99.5806,
+        "invader_tflops_per_sec": 39.02,
+        "resident_tflops_per_sec": 41.407,
+        "invader_share": 0.4852,
+        "invader_share_delta_points_vs_control": 0.058,
+        "invader_tflops_delta_percent_vs_control": 5.6829,
+        "resident_tflops_delta_percent_vs_control": -16.3818
+      }
+    ],
+    "conclusion": "Only changing the invader can affect outcomes by changing launch efficiency, kernel shape, or the number of own competing processes. The measured high-priority stream hook alone is not enough to claim guaranteed extra GPU share under full utilization."
+  }
+}

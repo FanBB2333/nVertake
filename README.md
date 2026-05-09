@@ -1,12 +1,14 @@
 # nVertake
 
-A Python package for preemptive scheduling on NVIDIA GPUs.
+A Python package for low-intrusion CUDA stream priority, GPU memory reservation,
+and resource-contention experiments on NVIDIA GPUs.
 
 ## Features
 
-- **Priority Scheduling**: Elevate your GPU process priority using CPU nice values and CUDA stream priorities
+- **PyTorch Priority Hook**: Run common PyTorch training and inference workloads on a high-priority CUDA stream with little or no source change
 - **Memory Reservation**: Reserve GPU memory to prevent other processes from claiming it
 - **Dynamic Memory Management**: Maintain constant memory usage even during script execution
+- **Contention Experiments**: Measure whether a change actually improves saturated GPU resource share before relying on it
 
 ## Installation
 
@@ -18,7 +20,7 @@ pip install -e .
 
 ### Run with Elevated Priority
 
-Run a Python script with elevated GPU scheduling priority:
+Run a Python script with nVertake's PyTorch stream-priority hook:
 
 ```bash
 nvertake run train.py --epochs 100
@@ -125,9 +127,14 @@ Commands:
 2. **PyTorch Auto-Injection**: `nvertake run` prepends a small `sitecustomize` hook to the child Python process. When PyTorch is imported, the hook creates a high-priority CUDA stream and makes it the current stream for the selected device.
 3. **In-Process API**: `@inject_priority` and `enable_torch_priority()` remain available when you prefer an explicit one-line code change.
 
-This is intentionally low-intrusion, not a hard GPU quota system. Code that
-manually switches CUDA streams, launches work from other Python threads, or uses
-non-PyTorch CUDA APIs may need explicit integration.
+This is intentionally low-intrusion, not a hard GPU quota or preemption system.
+CUDA stream priority can influence how queued CUDA work is scheduled, but it does
+not give an unprivileged process a guaranteed GPU capacity share. Lowering the
+CPU nice value may also require elevated OS permissions; if that fails, the CUDA
+stream hook can still be used inside your own process.
+
+Code that manually switches CUDA streams, launches work from other Python
+threads, or uses non-PyTorch CUDA APIs may need explicit integration.
 
 ### Memory Reservation
 
@@ -151,9 +158,44 @@ repository does not depend on FakeGPU for its main test flow.
   `python3 verification/run_contention_util_experiment.py --output verification/results/contention_util_<date>.json`
 - Own-process-only contention variants:
   `python3 verification/run_own_process_variants_experiment.py --output verification/results/own_process_variants_<date>.json`
+- Plot-ready result summary:
+  `verification/results/resource_contention_summary_20260509.json`
 
 See `test/README.md` for the test matrix, prerequisites, and how to interpret
 the generated artifacts.
+
+## Experimental Results
+
+The 2026-05-09 real-GPU contention runs were designed around saturated
+resident-vs-invader workloads, because GPU utilization must be near full before
+resource-share claims are meaningful.
+
+The same-kernel two-process experiment saturated both tested loads
+(`97.7-99.5%` mean GPU utilization), but the nVertake high-priority stream
+invader did not gain share. Invader share changed by `-0.26` percentage points
+for `gemm4096_fp16_batch12` and `-0.82` percentage points for
+`gemm8192_fp16_batch4`, so this result does not prove stronger inter-process GPU
+allocation under full utilization.
+
+The own-process-only variant experiment kept the resident fixed at
+`gemm8192_fp16_batch4` and changed only the invader implementation:
+
+| Invader Variant | Mean GPU Util | Invader TFLOP/s | Resident TFLOP/s | Invader Share | Share Δ vs Control |
+|---|---:|---:|---:|---:|---:|
+| control, single eager normal stream | 99.5% | 36.92 | 49.52 | 42.71% | 0.00 pp |
+| nVertake, single eager high-priority stream | 99.0% | 36.38 | 49.53 | 42.35% | -0.36 pp |
+| nVertake, four eager high-priority streams | 98.3% | 35.96 | 48.78 | 42.43% | -0.28 pp |
+| nVertake, CUDA Graph replay with 4096 GEMM | 99.9% | 213.80 | 38.77 | 84.65% | +41.94 pp |
+| nVertake, smaller 4096 eager GEMM | 98.9% | 31.36 | 46.45 | 40.31% | -2.40 pp |
+| two normal-priority invader replicas | 99.1% | 36.95 | 41.07 | 47.35% | +4.64 pp |
+| two nVertake invader replicas | 99.6% | 39.02 | 41.41 | 48.52% | +5.80 pp |
+
+Interpretation: the low-intrusion nVertake stream hook is effective at making
+typical PyTorch/Hugging Face workloads run on a non-default high-priority stream,
+but the measured full-utilization share gains came from changing the invader's
+own execution pattern, especially CUDA Graph replay or extra own replicas. Treat
+those as workload-level optimization or self-parallelism techniques, not as a
+guaranteed GPU scheduling entitlement.
 
 ## Performance Test (Resident vs Invader)
 

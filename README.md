@@ -147,6 +147,8 @@ repository does not depend on FakeGPU for its main test flow.
 - Resident-vs-invader benchmark: `bash test/run_tests_summary.sh overtake`
 - Hugging Face smoke checks:
   `nvertake run verification/verify_transformers_priority.py --expect-priority`
+- Sustained utilization contention experiment:
+  `python3 verification/run_contention_util_experiment.py --output verification/results/contention_util_<date>.json`
 
 See `test/README.md` for the test matrix, prerequisites, and how to interpret
 the generated artifacts.

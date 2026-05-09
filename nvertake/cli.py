@@ -6,6 +6,7 @@ import argparse
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from . import __version__
@@ -24,6 +25,12 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   # Run a script with elevated GPU priority
   nvertake run train.py --epochs 100
+
+  # Run a launcher such as torchrun with the same priority environment
+  nvertake exec torchrun --nproc_per_node=4 train.py
+
+  # Disable PyTorch high-priority stream auto-injection
+  nvertake --no-torch-priority run train.py
 
   # Run with 95%% memory reservation
   nvertake --filled 0.95 run train.py
@@ -72,6 +79,12 @@ Examples:
         action='store_true',
         help='Suppress info messages',
     )
+
+    parser.add_argument(
+        '--no-torch-priority',
+        action='store_true',
+        help='Disable PyTorch high-priority stream auto-injection for `run`/`exec`.',
+    )
     
     # Subcommand for running scripts
     subparsers = parser.add_subparsers(dest='command', help='Commands')
@@ -89,6 +102,16 @@ Examples:
         nargs=argparse.REMAINDER,
         help='Arguments to pass to the script',
     )
+
+    exec_parser = subparsers.add_parser(
+        'exec',
+        help='Run any command with elevated priority environment',
+    )
+    exec_parser.add_argument(
+        'command_args',
+        nargs=argparse.REMAINDER,
+        help='Command and arguments to execute',
+    )
     
     # Info subcommand
     info_parser = subparsers.add_parser(
@@ -97,6 +120,48 @@ Examples:
     )
     
     return parser
+
+
+def _prepend_env_path(existing: Optional[str], prefix: str) -> str:
+    if not existing:
+        return prefix
+    return prefix + os.pathsep + existing
+
+
+def _auto_priority_bootstrap_dir() -> str:
+    return str(Path(__file__).resolve().parent / "_bootstrap")
+
+
+def configure_auto_priority_env(
+    env: dict,
+    *,
+    device: int,
+    quiet: bool = False,
+) -> dict:
+    """
+    Configure a child Python process to install nVertake's PyTorch hook.
+
+    `CUDA_VISIBLE_DEVICES` maps the selected physical GPU to logical device 0
+    inside the child process, so the injected stream targets device 0 there.
+    """
+    env["NVERTAKE_AUTO_PRIORITY"] = "1"
+    env["NVERTAKE_AUTO_PRIORITY_DEVICE"] = "0"
+    env["NVERTAKE_AUTO_PRIORITY_PHYSICAL_DEVICE"] = str(device)
+    if quiet:
+        env["NVERTAKE_AUTO_PRIORITY_QUIET"] = "1"
+    env["PYTHONPATH"] = _prepend_env_path(
+        env.get("PYTHONPATH"),
+        _auto_priority_bootstrap_dir(),
+    )
+    return env
+
+
+def _build_child_env(args: argparse.Namespace, *, device: int) -> dict:
+    env = os.environ.copy()
+    env['CUDA_VISIBLE_DEVICES'] = str(device)
+    if not args.no_torch_priority:
+        configure_auto_priority_env(env, device=device, quiet=bool(args.quiet))
+    return env
 
 
 def cmd_info(args: argparse.Namespace) -> int:
@@ -160,9 +225,7 @@ def cmd_run(
         logger.info(f"Memory manager active, maintaining {fill_ratio*100:.1f}% usage")
     
     try:
-        # Set CUDA_VISIBLE_DEVICES
-        env = os.environ.copy()
-        env['CUDA_VISIBLE_DEVICES'] = str(device)
+        env = _build_child_env(args, device=device)
         
         # Build command
         cmd = [sys.executable, script] + script_args
@@ -176,6 +239,54 @@ def cmd_run(
         return 130
     except Exception as e:
         logger.error(f"Failed to run script: {e}")
+        return 1
+    finally:
+        if memory_manager is not None:
+            memory_manager.stop_monitor()
+            memory_manager.release_memory()
+        scheduler.restore_cpu_priority()
+
+
+def cmd_exec(
+    args: argparse.Namespace,
+    fill_ratio: Optional[float] = None,
+) -> int:
+    """Run an arbitrary command with priority env and optional memory filling."""
+    device = args.device
+    nice_value = args.nice
+    command_args = args.command_args or []
+
+    if not command_args:
+        logger.error("No command provided for `exec`")
+        return 1
+
+    if not validate_device(device):
+        logger.error(f"Invalid GPU device: {device}")
+        return 1
+
+    scheduler = PriorityScheduler(device=device, nice_value=nice_value)
+    scheduler.set_cpu_priority()
+
+    memory_manager: Optional[MemoryManager] = None
+    if fill_ratio is not None:
+        memory_manager = MemoryManager(
+            device=device,
+            fill_ratio=fill_ratio,
+        )
+        memory_manager.fill_memory()
+        memory_manager.start_monitor()
+        logger.info(f"Memory manager active, maintaining {fill_ratio*100:.1f}% usage")
+
+    try:
+        env = _build_child_env(args, device=device)
+        logger.info(f"Running: {' '.join(command_args)}")
+        result = subprocess.run(command_args, env=env)
+        return result.returncode
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        return 130
+    except Exception as e:
+        logger.error(f"Failed to run command: {e}")
         return 1
     finally:
         if memory_manager is not None:
@@ -216,6 +327,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cmd_info(args)
     elif args.command == 'run':
         return cmd_run(args, fill_ratio=args.filled)
+    elif args.command == 'exec':
+        return cmd_exec(args, fill_ratio=args.filled)
     elif args.filled is not None:
         # Standalone --filled mode (no run command)
         return cmd_filled_only(args)

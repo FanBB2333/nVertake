@@ -24,6 +24,24 @@ Run a Python script with elevated GPU scheduling priority:
 nvertake run train.py --epochs 100
 ```
 
+For PyTorch scripts, `nvertake run` enables a startup hook by default. The hook
+patches PyTorch after import and sets the current CUDA stream to a high-priority
+stream, so most single-process training scripts do not need source changes.
+
+For launchers such as `torchrun` or `accelerate`, use `exec` so child worker
+processes inherit the same environment:
+
+```bash
+nvertake exec torchrun --nproc_per_node=4 train.py
+```
+
+Disable the PyTorch hook for `run` or `exec` if your program manages CUDA
+streams explicitly:
+
+```bash
+nvertake --no-torch-priority run train.py
+```
+
 ### Memory Reservation
 
 Reserve 95% of GPU memory while running your script:
@@ -71,6 +89,15 @@ def train():
 train()
 ```
 
+For an even smaller source change, call the PyTorch hook once near process
+startup:
+
+```python
+from nvertake import enable_torch_priority
+
+enable_torch_priority()
+```
+
 ## CLI Options
 
 ```
@@ -80,11 +107,13 @@ Options:
   --filled, -f RATIO    Fill GPU memory to this ratio (0.0-1.0)
   --device, -d GPU_ID   GPU device to use (default: 0)
   --nice, -n VALUE      Nice value for CPU priority (default: -10)
+  --no-torch-priority   Disable PyTorch high-priority stream auto-injection
   --quiet, -q           Suppress info messages
   --version, -V         Show version
 
 Commands:
   run SCRIPT [ARGS...]  Run a Python script with elevated priority
+  exec COMMAND [ARGS...] Run any command with elevated priority environment
   info                  Show GPU information
 ```
 
@@ -93,7 +122,12 @@ Commands:
 ### Priority Scheduling
 
 1. **CPU Priority**: Uses `os.nice()` to increase process priority (lower nice value = higher priority)
-2. **CUDA Streams**: Creates high-priority CUDA streams for GPU task scheduling
+2. **PyTorch Auto-Injection**: `nvertake run` prepends a small `sitecustomize` hook to the child Python process. When PyTorch is imported, the hook creates a high-priority CUDA stream and makes it the current stream for the selected device.
+3. **In-Process API**: `@inject_priority` and `enable_torch_priority()` remain available when you prefer an explicit one-line code change.
+
+This is intentionally low-intrusion, not a hard GPU quota system. Code that
+manually switches CUDA streams, launches work from other Python threads, or uses
+non-PyTorch CUDA APIs may need explicit integration.
 
 ### Memory Reservation
 

@@ -100,6 +100,63 @@ class TestScheduler(unittest.TestCase):
         scheduler.priority_context.assert_called_once()
 
 
+class TestAutoPriority(unittest.TestCase):
+    """Tests for low-intrusion PyTorch priority injection."""
+
+    def test_enable_torch_priority_sets_high_priority_stream(self):
+        from nvertake import auto_priority
+
+        class DummyDeviceContext:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                return False
+
+        class DummyStream:
+            def __init__(self, device, priority):
+                self.device = device
+                self.priority = priority
+
+        class DummyCuda:
+            def __init__(self):
+                self.selected_stream = None
+
+            def is_available(self):
+                return True
+
+            def current_device(self):
+                return 0
+
+            def get_stream_priority_range(self):
+                return (0, -1)
+
+            def Stream(self, device, priority):
+                return DummyStream(device, priority)
+
+            def device(self, device):
+                return DummyDeviceContext()
+
+            def set_stream(self, stream):
+                self.selected_stream = stream
+
+            def current_stream(self, device_arg=None):
+                return self.selected_stream
+
+        class DummyTorch:
+            cuda = DummyCuda()
+
+        auto_priority._STREAMS.clear()
+
+        with patch.dict(os.environ, {}, clear=False):
+            self.assertTrue(auto_priority.enable_torch_priority(DummyTorch, device=3))
+
+        stream = DummyTorch.cuda.selected_stream
+        self.assertIsNotNone(stream)
+        self.assertEqual(stream.device, 3)
+        self.assertEqual(stream.priority, -1)
+
+
 class TestMemoryManager(unittest.TestCase):
     """Tests for MemoryManager."""
     
@@ -140,6 +197,15 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(args.command, 'run')
         self.assertEqual(args.script, 'test.py')
         self.assertEqual(args.script_args, ['--arg1', 'value1'])
+
+    def test_parse_exec_command(self):
+        """Test parsing exec command."""
+        from nvertake.cli import create_parser
+        parser = create_parser()
+        args = parser.parse_args(['exec', 'torchrun', '--nproc_per_node=2', 'train.py'])
+
+        self.assertEqual(args.command, 'exec')
+        self.assertEqual(args.command_args, ['torchrun', '--nproc_per_node=2', 'train.py'])
     
     def test_parse_filled_option(self):
         """Test parsing --filled option."""
@@ -157,6 +223,14 @@ class TestCLI(unittest.TestCase):
         args = parser.parse_args(['--device', '2', 'run', 'test.py'])
         
         self.assertEqual(args.device, 2)
+
+    def test_parse_no_torch_priority_option(self):
+        """Test parsing --no-torch-priority option."""
+        from nvertake.cli import create_parser
+        parser = create_parser()
+        args = parser.parse_args(['--no-torch-priority', 'run', 'test.py'])
+
+        self.assertTrue(args.no_torch_priority)
     
     def test_parse_info_command(self):
         """Test parsing info command."""
@@ -165,6 +239,19 @@ class TestCLI(unittest.TestCase):
         args = parser.parse_args(['info'])
         
         self.assertEqual(args.command, 'info')
+
+    def test_configure_auto_priority_env(self):
+        """Test child env setup for PyTorch auto-priority injection."""
+        from nvertake.cli import configure_auto_priority_env
+
+        env = {"PYTHONPATH": "/existing"}
+        configured = configure_auto_priority_env(env, device=2, quiet=True)
+
+        self.assertEqual(configured["NVERTAKE_AUTO_PRIORITY"], "1")
+        self.assertEqual(configured["NVERTAKE_AUTO_PRIORITY_DEVICE"], "0")
+        self.assertEqual(configured["NVERTAKE_AUTO_PRIORITY_PHYSICAL_DEVICE"], "2")
+        self.assertEqual(configured["NVERTAKE_AUTO_PRIORITY_QUIET"], "1")
+        self.assertTrue(configured["PYTHONPATH"].endswith(os.pathsep + "/existing"))
 
 
 if __name__ == '__main__':

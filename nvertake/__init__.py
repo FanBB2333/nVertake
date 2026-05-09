@@ -8,14 +8,44 @@ on NVIDIA GPUs.
 __version__ = "0.1.0"
 __author__ = "nVertake Authors"
 
-from .scheduler import PriorityScheduler
-from .memory import MemoryManager, fill_gpu_memory
-from .scheduler import inject_priority
-
 __all__ = [
     "__version__",
     "PriorityScheduler",
     "inject_priority",
+    "enable_torch_priority",
+    "install_torch_priority_import_hook",
     "MemoryManager",
     "fill_gpu_memory",
 ]
+
+
+def __getattr__(name):
+    """Load torch-dependent exports lazily."""
+    if name in {"PriorityScheduler", "inject_priority"}:
+        from .scheduler import PriorityScheduler, inject_priority
+
+        return {
+            "PriorityScheduler": PriorityScheduler,
+            "inject_priority": inject_priority,
+        }[name]
+
+    if name in {"MemoryManager", "fill_gpu_memory"}:
+        from .memory import MemoryManager, fill_gpu_memory
+
+        return {
+            "MemoryManager": MemoryManager,
+            "fill_gpu_memory": fill_gpu_memory,
+        }[name]
+
+    if name in {"enable_torch_priority", "install_torch_priority_import_hook"}:
+        from .auto_priority import (
+            enable_torch_priority,
+            install_torch_priority_import_hook,
+        )
+
+        return {
+            "enable_torch_priority": enable_torch_priority,
+            "install_torch_priority_import_hook": install_torch_priority_import_hook,
+        }[name]
+
+    raise AttributeError(f"module 'nvertake' has no attribute {name!r}")

@@ -13,6 +13,7 @@ File: `test/test_nvertake.py`
 Scope:
 - CLI argument parsing
 - scheduler wiring
+- PyTorch auto-priority env injection
 - memory target calculations
 - utility helpers
 
@@ -30,6 +31,7 @@ File: `test/test_gpu_priority.py`
 
 Scope:
 - high-priority CUDA stream creation
+- low-intrusion PyTorch stream auto-injection
 - stream-priority behavior under contention
 - optional `nvidia-smi pmon` observation of SM utilization
 

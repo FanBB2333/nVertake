@@ -35,6 +35,11 @@ dependencies = [
 dev = [
     "pytest",
 ]
+hf = [
+    "transformers",
+    "peft",
+    "accelerate",
+]
 
 [project.scripts]
 nvertake = "nvertake.cli:main"

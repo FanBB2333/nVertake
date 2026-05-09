@@ -145,6 +145,8 @@ repository does not depend on FakeGPU for its main test flow.
 - Real-GPU integration checks: `bash test/run_tests_summary.sh gpu --device 0`
 - `nvidia-smi pmon` checks: `bash test/run_tests_summary.sh pmon --device 0`
 - Resident-vs-invader benchmark: `bash test/run_tests_summary.sh overtake`
+- Hugging Face smoke checks:
+  `nvertake run verification/verify_transformers_priority.py --expect-priority`
 
 See `test/README.md` for the test matrix, prerequisites, and how to interpret
 the generated artifacts.

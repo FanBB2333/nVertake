@@ -106,10 +106,10 @@ VARIANTS: List[InvaderVariant] = [
     ),
     InvaderVariant(
         variant_id="nvertake_cuda_graph",
-        description="single invader process, nVertake stream with CUDA Graph replay",
-        matrix_size=8192,
+        description="single invader process, 4096 GEMM kernels on nVertake stream with CUDA Graph replay",
+        matrix_size=4096,
         dtype="float16",
-        batch_iters=4,
+        batch_iters=12,
         stream_mode="nvertake",
         launch_mode="cuda_graph",
     ),
@@ -341,6 +341,7 @@ def _summarize_variant(
     windows: Dict[str, float],
     resident_returncode: Optional[int],
     invader_returncodes: List[Optional[int]],
+    invader_timed_out: bool,
 ) -> Dict[str, Any]:
     pre_start = windows["pre_start"]
     invade_start = windows["invade_start"]
@@ -387,6 +388,7 @@ def _summarize_variant(
             "resident": resident_returncode,
             "invaders": invader_returncodes,
         },
+        "invader_timed_out": invader_timed_out,
         "windows": windows,
         "resident": {
             "pre_tflops_per_sec": asdict(resident_pre_tflops),
@@ -450,6 +452,8 @@ def _run_variant(
     monitor.start()
 
     invaders: List[subprocess.Popen[Any]] = []
+    invader_returncodes: List[Optional[int]] = []
+    invader_timed_out = False
     try:
         _wait_for_event(resident_log, "ready")
         pre_start = time.time()
@@ -477,10 +481,15 @@ def _run_variant(
                 )
             )
 
-        invader_returncodes = [
-            process.wait(timeout=config.invade_seconds + config.warmup_seconds + 60.0)
-            for process in invaders
-        ]
+        for process in invaders:
+            try:
+                invader_returncodes.append(
+                    process.wait(timeout=config.invade_seconds + config.warmup_seconds + 60.0)
+                )
+            except subprocess.TimeoutExpired:
+                invader_timed_out = True
+                _terminate(process)
+                invader_returncodes.append(process.returncode)
         invade_end = time.time()
         time.sleep(config.post_seconds)
         post_end = time.time()
@@ -505,6 +514,7 @@ def _run_variant(
         windows=windows,
         resident_returncode=resident.poll(),
         invader_returncodes=invader_returncodes,
+        invader_timed_out=invader_timed_out,
     )
 
 

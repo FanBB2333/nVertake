@@ -401,16 +401,85 @@ def _compare(no_nvertake: Dict[str, Any], with_nvertake: Dict[str, Any]) -> Dict
     no_invader_share = no_nvertake["resource_split"]["invader_share_of_combined_during_iters"]
     yes_invader_share = with_nvertake["resource_split"]["invader_share_of_combined_during_iters"]
 
+    invader_share_change = (
+        (yes_invader_share - no_invader_share) if yes_invader_share is not None and no_invader_share is not None else None
+    )
+    invader_iters_change = _pct_change(yes_invader, no_invader)
+    resident_iters_change = _pct_change(yes_resident, no_resident)
+
     return {
         "invader_iters_per_sec_change_percent": _pct_change(yes_invader, no_invader),
-        "resident_iters_per_sec_change_percent": _pct_change(yes_resident, no_resident),
-        "invader_share_change_points": (
-            (yes_invader_share - no_invader_share) if yes_invader_share is not None and no_invader_share is not None else None
-        ),
+        "resident_iters_per_sec_change_percent": resident_iters_change,
+        "invader_share_change_points": invader_share_change,
+        "nvertake_improved_invader_throughput": bool(invader_iters_change is not None and invader_iters_change > 0.0),
+        "nvertake_improved_invader_share": bool(invader_share_change is not None and invader_share_change > 0.0),
         "no_nvertake_invader_share": no_invader_share,
         "with_nvertake_invader_share": yes_invader_share,
         "no_nvertake_gpu_util_during_mean": no_nvertake["gpu_util"]["during_percent"]["mean"],
         "with_nvertake_gpu_util_during_mean": with_nvertake["gpu_util"]["during_percent"]["mean"],
+    }
+
+
+def _top_level_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    loads: List[Dict[str, Any]] = []
+    for result in results:
+        comparison = result["comparison"]
+        scenarios = {scenario["label"]: scenario for scenario in result["scenarios"]}
+        no_nvertake = scenarios["invader_no_nvertake"]
+        with_nvertake = scenarios["invader_with_nvertake"]
+        no_util_mean = no_nvertake["gpu_util"]["during_percent"]["mean"]
+        yes_util_mean = with_nvertake["gpu_util"]["during_percent"]["mean"]
+        no_ge90 = no_nvertake["gpu_util"]["during_fraction_ge_90_percent"]
+        yes_ge90 = with_nvertake["gpu_util"]["during_fraction_ge_90_percent"]
+        invader_share_change = comparison["invader_share_change_points"]
+        invader_iters_change = comparison["invader_iters_per_sec_change_percent"]
+        improved_share = bool(invader_share_change is not None and invader_share_change > 0.0)
+        improved_throughput = bool(invader_iters_change is not None and invader_iters_change > 0.0)
+        saturated = bool(
+            no_util_mean is not None
+            and yes_util_mean is not None
+            and no_util_mean >= 90.0
+            and yes_util_mean >= 90.0
+            and no_ge90 is not None
+            and yes_ge90 is not None
+            and no_ge90 >= 0.8
+            and yes_ge90 >= 0.8
+        )
+        loads.append(
+            {
+                "load_id": result["load_id"],
+                "saturated_competition": saturated,
+                "no_nvertake_gpu_util_during_mean": no_util_mean,
+                "with_nvertake_gpu_util_during_mean": yes_util_mean,
+                "no_nvertake_gpu_util_ge90_fraction": no_ge90,
+                "with_nvertake_gpu_util_ge90_fraction": yes_ge90,
+                "no_nvertake_invader_share": comparison["no_nvertake_invader_share"],
+                "with_nvertake_invader_share": comparison["with_nvertake_invader_share"],
+                "invader_share_change_points": invader_share_change,
+                "invader_iters_per_sec_change_percent": invader_iters_change,
+                "resident_iters_per_sec_change_percent": comparison["resident_iters_per_sec_change_percent"],
+                "nvertake_improved_invader_share": improved_share,
+                "nvertake_improved_invader_throughput": improved_throughput,
+            }
+        )
+
+    saturated_count = sum(1 for load in loads if load["saturated_competition"])
+    improved_share_count = sum(1 for load in loads if load["nvertake_improved_invader_share"])
+    improved_throughput_count = sum(1 for load in loads if load["nvertake_improved_invader_throughput"])
+    return {
+        "total_loads": len(loads),
+        "saturated_loads": saturated_count,
+        "nvertake_improved_invader_share_loads": improved_share_count,
+        "nvertake_improved_invader_throughput_loads": improved_throughput_count,
+        "loads": loads,
+        "interpretation": (
+            "This experiment verifies saturated two-process GPU contention. "
+            "For these bulk GEMM workloads, nVertake did not increase the invader's "
+            "throughput share, so the current stream-priority implementation does not "
+            "prove stronger inter-process GPU resource allocation under full utilization."
+            if loads and improved_share_count == 0
+            else "nVertake improved invader share for at least one saturated load."
+        ),
     }
 
 
@@ -458,6 +527,7 @@ def main() -> int:
         "started_at": started_at,
         "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "device": args.device,
+        "summary": _top_level_summary(results),
         "metric_notes": {
             "gpu_util_percent": "Sampled from nvidia-smi at the configured sample interval.",
             "throughput": "Each iteration is one square GEMM. Throughput is per-process iters/sec and TFLOP/sec.",

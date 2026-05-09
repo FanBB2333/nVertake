@@ -1,0 +1,3884 @@
+{
+  "device": 0,
+  "finished_at": "2026-05-09T12:32:14+0800",
+  "metric_notes": {
+    "gpu_util_percent": "Sampled from nvidia-smi at the configured sample interval.",
+    "resource_split": "Approximate compute share from resident/invader GEMM throughput during the contention window.",
+    "throughput": "Each iteration is one square GEMM. Throughput is per-process iters/sec and TFLOP/sec."
+  },
+  "results": [
+    {
+      "comparison": {
+        "invader_iters_per_sec_change_percent": -1.1219601119710392,
+        "invader_share_change_points": -0.0025964851339737027,
+        "no_nvertake_gpu_util_during_mean": 97.65714285714286,
+        "no_nvertake_invader_share": 0.4505065569041947,
+        "resident_iters_per_sec_change_percent": -0.07884473798027553,
+        "with_nvertake_gpu_util_during_mean": 98.0,
+        "with_nvertake_invader_share": 0.447910071770221
+      },
+      "config": {
+        "batch_iters": 12,
+        "dtype": "float16",
+        "invade_seconds": 12.0,
+        "load_id": "gemm4096_fp16_batch12",
+        "matrix_size": 4096,
+        "post_seconds": 3.0,
+        "pre_seconds": 6.0,
+        "report_interval": 1.0,
+        "sample_interval": 0.5,
+        "warmup_seconds": 2.0
+      },
+      "load_id": "gemm4096_fp16_batch12",
+      "scenarios": [
+        {
+          "config": {
+            "batch_iters": 12,
+            "dtype": "float16",
+            "invade_seconds": 12.0,
+            "load_id": "gemm4096_fp16_batch12",
+            "matrix_size": 4096,
+            "post_seconds": 3.0,
+            "pre_seconds": 6.0,
+            "report_interval": 1.0,
+            "sample_interval": 0.5,
+            "warmup_seconds": 2.0
+          },
+          "gpu_util": {
+            "during_fraction_ge_80_percent": 1.0,
+            "during_fraction_ge_90_percent": 0.9428571428571428,
+            "during_percent": {
+              "max": 100.0,
+              "mean": 97.65714285714286,
+              "median": 100.0,
+              "min": 85.0,
+              "samples": 35
+            },
+            "during_samples_ge_80_percent": 35,
+            "during_samples_ge_90_percent": 33,
+            "post_percent": {
+              "max": 99.0,
+              "mean": 96.2,
+              "median": 98.0,
+              "min": 91.0,
+              "samples": 5
+            },
+            "pre_percent": {
+              "max": 99.0,
+              "mean": 94.8,
+              "median": 96.0,
+              "min": 81.0,
+              "samples": 10
+            },
+            "samples": [
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 863.0,
+                "power_draw_w": 24.12,
+                "t": 1778300996.208184
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 863.0,
+                "power_draw_w": 24.12,
+                "t": 1778300996.7581172
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 863.0,
+                "power_draw_w": 24.46,
+                "t": 1778300997.316463
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 863.0,
+                "power_draw_w": 24.56,
+                "t": 1778300997.8797545
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 863.0,
+                "power_draw_w": 24.76,
+                "t": 1778300998.447128
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 863.0,
+                "power_draw_w": 24.86,
+                "t": 1778300999.010015
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1280.0,
+                "power_draw_w": 56.3,
+                "t": 1778300999.5970545
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1280.0,
+                "power_draw_w": 177.36,
+                "t": 1778301000.1433144
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1280.0,
+                "power_draw_w": 304.08,
+                "t": 1778301000.6805384
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1280.0,
+                "power_draw_w": 359.54,
+                "t": 1778301001.2508886
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1280.0,
+                "power_draw_w": 358.2,
+                "t": 1778301001.8885949
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 357.7,
+                "t": 1778301002.4536138
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 368.32,
+                "t": 1778301003.0129676
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 377.58,
+                "t": 1778301003.5721407
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 373.97,
+                "t": 1778301004.1324708
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 81.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 354.3,
+                "t": 1778301004.6821165
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 344.7,
+                "t": 1778301005.2307785
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 357.15,
+                "t": 1778301005.7783356
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 357.27,
+                "t": 1778301006.3286498
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 359.01,
+                "t": 1778301006.8912861
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 343.67,
+                "t": 1778301007.448978
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 332.75,
+                "t": 1778301008.0415058
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 91.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 360.71,
+                "t": 1778301008.6042573
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 91.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 358.63,
+                "t": 1778301009.144368
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 359.38,
+                "t": 1778301009.6987033
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 85.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 358.14,
+                "t": 1778301010.2644002
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 85.0,
+                "memory_used_mib": 1290.0,
+                "power_draw_w": 349.89,
+                "t": 1778301010.8190434
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 349.36,
+                "t": 1778301011.3823829
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 361.67,
+                "t": 1778301011.9464197
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 368.28,
+                "t": 1778301012.498271
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 379.89,
+                "t": 1778301013.0494947
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 385.65,
+                "t": 1778301013.609195
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 385.71,
+                "t": 1778301014.1467764
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 385.53,
+                "t": 1778301014.709053
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 383.51,
+                "t": 1778301015.2625544
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 383.88,
+                "t": 1778301015.814815
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 386.63,
+                "t": 1778301016.3762586
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 387.17,
+                "t": 1778301016.9335434
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 386.32,
+                "t": 1778301017.492373
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 386.11,
+                "t": 1778301018.0378206
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 387.64,
+                "t": 1778301018.597826
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 387.15,
+                "t": 1778301019.1648412
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 386.42,
+                "t": 1778301019.715697
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 386.58,
+                "t": 1778301020.2833092
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 388.58,
+                "t": 1778301020.8253186
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 389.25,
+                "t": 1778301021.3745785
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 389.75,
+                "t": 1778301021.9151974
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 390.03,
+                "t": 1778301022.4906933
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 390.44,
+                "t": 1778301023.0316632
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 390.35,
+                "t": 1778301023.584161
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 390.77,
+                "t": 1778301024.1295822
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 390.75,
+                "t": 1778301024.6807995
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 390.34,
+                "t": 1778301025.2560203
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 385.39,
+                "t": 1778301025.8407073
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 91.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 375.96,
+                "t": 1778301026.4118247
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 91.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 364.03,
+                "t": 1778301026.9810042
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 352.02,
+                "t": 1778301027.5536954
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 371.92,
+                "t": 1778301028.122656
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 376.51,
+                "t": 1778301028.6638248
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 378.29,
+                "t": 1778301029.2142942
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 376.82,
+                "t": 1778301029.764474
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 278.97,
+                "t": 1778301030.3138382
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 157.25,
+                "t": 1778301030.8771646
+              }
+            ]
+          },
+          "invader": {
+            "during_iters_per_sec": {
+              "max": 256.0637587733873,
+              "mean": 251.30094998517683,
+              "median": 251.60809810044998,
+              "min": 245.35449874974117,
+              "samples": 11
+            },
+            "series": [
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 256.0637587733873,
+                "iters_total": 264,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301014.121136,
+                "tflops_per_sec": 35.19313502792101,
+                "window_seconds": 1.0309932231903076
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 251.5048819041532,
+                "iters_total": 516,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301015.1231046,
+                "tflops_per_sec": 34.56656776200577,
+                "window_seconds": 1.0019686222076416
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 253.06655538069356,
+                "iters_total": 780,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301016.1663084,
+                "tflops_per_sec": 34.78120253028645,
+                "window_seconds": 1.0432038307189941
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 247.09417525524958,
+                "iters_total": 1032,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301017.1861625,
+                "tflops_per_sec": 33.96036485610846,
+                "window_seconds": 1.0198540687561035
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 249.73209205003127,
+                "iters_total": 1284,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301018.1952438,
+                "tflops_per_sec": 34.32291737972947,
+                "window_seconds": 1.0090813636779785
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 245.35449874974117,
+                "iters_total": 1536,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301019.2223291,
+                "tflops_per_sec": 33.72126553781156,
+                "window_seconds": 1.027085304260254
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 248.46417388655175,
+                "iters_total": 1788,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301020.2365599,
+                "tflops_per_sec": 34.1486560342527,
+                "window_seconds": 1.014230728149414
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 251.60809810044998,
+                "iters_total": 2040,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301021.2381175,
+                "tflops_per_sec": 34.580753688006155,
+                "window_seconds": 1.0015575885772705
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 253.85850086109974,
+                "iters_total": 2304,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301022.2780669,
+                "tflops_per_sec": 34.89004668832036,
+                "window_seconds": 1.0399494171142578
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 252.6121378797436,
+                "iters_total": 2568,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301023.3231473,
+                "tflops_per_sec": 34.71874786451653,
+                "window_seconds": 1.0450804233551025
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 254.95157699584382,
+                "iters_total": 2832,
+                "pid": 118332,
+                "role": "invader",
+                "t": 1778301024.358638,
+                "tflops_per_sec": 35.04027792834481,
+                "window_seconds": 1.0354907512664795
+              }
+            ],
+            "share_of_combined_during_iters": 0.4505065569041947
+          },
+          "label": "invader_no_nvertake",
+          "process_returncodes": {
+            "invader": 0,
+            "resident": 0
+          },
+          "resident": {
+            "drop_during_vs_pre_percent": -35.82763364755308,
+            "during_iters_per_sec": {
+              "max": 475.5058094741879,
+              "mean": 306.5176791421653,
+              "median": 251.9815714135791,
+              "min": 244.67679543686802,
+              "samples": 18
+            },
+            "post_iters_per_sec": {
+              "max": 491.6567795156427,
+              "mean": 472.2565719249671,
+              "median": 473.6046551564336,
+              "min": 451.50828110282504,
+              "samples": 3
+            },
+            "pre_iters_per_sec": {
+              "max": 512.359991307028,
+              "mean": 477.64746192888003,
+              "median": 473.2888093252044,
+              "min": 452.7176571005753,
+              "samples": 6
+            },
+            "series": [
+              {
+                "delta_iters": 492,
+                "event": "throughput",
+                "iters_per_sec": 486.7536770160521,
+                "iters_total": 492,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301002.3187757,
+                "tflops_per_sec": 66.8989159677341,
+                "window_seconds": 1.0107781887054443
+              },
+              {
+                "delta_iters": 516,
+                "event": "throughput",
+                "iters_per_sec": 512.359991307028,
+                "iters_total": 1008,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301003.32588,
+                "tflops_per_sec": 70.41822100616095,
+                "window_seconds": 1.0071043968200684
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 478.6415507744743,
+                "iters_total": 1488,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301004.3287182,
+                "tflops_per_sec": 65.7839938266589,
+                "window_seconds": 1.002838134765625
+              },
+              {
+                "delta_iters": 468,
+                "event": "throughput",
+                "iters_per_sec": 467.4758274992159,
+                "iters_total": 1956,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301005.3298395,
+                "tflops_per_sec": 64.24938850494944,
+                "window_seconds": 1.0011212825775146
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 467.93606787593455,
+                "iters_total": 2436,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301006.3556206,
+                "tflops_per_sec": 64.3126434606712,
+                "window_seconds": 1.0257811546325684
+              },
+              {
+                "delta_iters": 456,
+                "event": "throughput",
+                "iters_per_sec": 452.7176571005753,
+                "iters_total": 2892,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301007.362871,
+                "tflops_per_sec": 62.22104101019882,
+                "window_seconds": 1.0072503089904785
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 475.5058094741879,
+                "iters_total": 3372,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301008.3723223,
+                "tflops_per_sec": 65.35302082398862,
+                "window_seconds": 1.0094513893127441
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 475.00779660177164,
+                "iters_total": 3852,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301009.382832,
+                "tflops_per_sec": 65.28457445598814,
+                "window_seconds": 1.010509729385376
+              },
+              {
+                "delta_iters": 468,
+                "event": "throughput",
+                "iters_per_sec": 460.38974058761113,
+                "iters_total": 4320,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301010.399362,
+                "tflops_per_sec": 63.27548413560684,
+                "window_seconds": 1.0165300369262695
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 469.66158738645805,
+                "iters_total": 4800,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301011.4213746,
+                "tflops_per_sec": 64.54979705639307,
+                "window_seconds": 1.02201247215271
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 244.73871889230836,
+                "iters_total": 5052,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301012.451044,
+                "tflops_per_sec": 33.63663339863685,
+                "window_seconds": 1.0296695232391357
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 246.89533506360513,
+                "iters_total": 5304,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301013.4717195,
+                "tflops_per_sec": 33.933036468260674,
+                "window_seconds": 1.0206754207611084
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 247.44217876271023,
+                "iters_total": 5556,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301014.4901392,
+                "tflops_per_sec": 34.00819409397844,
+                "window_seconds": 1.0184197425842285
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 244.67679543686802,
+                "iters_total": 5808,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301015.5200694,
+                "tflops_per_sec": 33.628122703725765,
+                "window_seconds": 1.0299301147460938
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 254.37069882228244,
+                "iters_total": 6072,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301016.5579247,
+                "tflops_per_sec": 34.9604426400758,
+                "window_seconds": 1.0378553867340088
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 252.60700896138542,
+                "iters_total": 6336,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301017.6030264,
+                "tflops_per_sec": 34.718042951344934,
+                "window_seconds": 1.0451016426086426
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 254.71915375813813,
+                "iters_total": 6600,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301018.639462,
+                "tflops_per_sec": 35.00833392179196,
+                "window_seconds": 1.036435604095459
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 251.35613386577276,
+                "iters_total": 6852,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301019.6420236,
+                "tflops_per_sec": 34.54612398727975,
+                "window_seconds": 1.0025615692138672
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 251.0462251667898,
+                "iters_total": 7104,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301020.6458228,
+                "tflops_per_sec": 34.50353046001966,
+                "window_seconds": 1.0037992000579834
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 253.29765148156636,
+                "iters_total": 7368,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301021.6880748,
+                "tflops_per_sec": 34.81296413654187,
+                "window_seconds": 1.0422520637512207
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 247.60396095269576,
+                "iters_total": 7620,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301022.7058291,
+                "tflops_per_sec": 34.03042926886046,
+                "window_seconds": 1.017754316329956
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 249.0121303830651,
+                "iters_total": 7872,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301023.717828,
+                "tflops_per_sec": 34.22396660168168,
+                "window_seconds": 1.0119988918304443
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 249.22115380761133,
+                "iters_total": 8124,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301024.7289782,
+                "tflops_per_sec": 34.252694562402446,
+                "window_seconds": 1.0111501216888428
+              },
+              {
+                "delta_iters": 396,
+                "event": "throughput",
+                "iters_per_sec": 389.76614515414815,
+                "iters_total": 8520,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301025.744972,
+                "tflops_per_sec": 53.569051088801764,
+                "window_seconds": 1.0159938335418701
+              },
+              {
+                "delta_iters": 456,
+                "event": "throughput",
+                "iters_per_sec": 451.50828110282504,
+                "iters_total": 8976,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301026.7549202,
+                "tflops_per_sec": 62.054825638713865,
+                "window_seconds": 1.0099482536315918
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 473.6046551564336,
+                "iters_total": 9456,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301027.7684238,
+                "tflops_per_sec": 65.09172816416768,
+                "window_seconds": 1.0135035514831543
+              },
+              {
+                "delta_iters": 492,
+                "event": "throughput",
+                "iters_per_sec": 491.6567795156427,
+                "iters_total": 9948,
+                "pid": 118201,
+                "role": "resident",
+                "t": 1778301028.769122,
+                "tflops_per_sec": 67.57279324404378,
+                "window_seconds": 1.0006980895996094
+              }
+            ]
+          },
+          "resource_split": {
+            "combined_during_iters_per_sec": 557.8186291273421,
+            "invader_share_of_combined_during_iters": 0.4505065569041947,
+            "resident_share_of_combined_during_iters": 0.5494934430958054
+          },
+          "windows": {
+            "invade_end": 1778301026.6110616,
+            "invade_start": 1778301007.3700173,
+            "post_end": 1778301029.6113603,
+            "pre_start": 1778301001.3699427
+          }
+        },
+        {
+          "config": {
+            "batch_iters": 12,
+            "dtype": "float16",
+            "invade_seconds": 12.0,
+            "load_id": "gemm4096_fp16_batch12",
+            "matrix_size": 4096,
+            "post_seconds": 3.0,
+            "pre_seconds": 6.0,
+            "report_interval": 1.0,
+            "sample_interval": 0.5,
+            "warmup_seconds": 2.0
+          },
+          "gpu_util": {
+            "during_fraction_ge_80_percent": 1.0,
+            "during_fraction_ge_90_percent": 0.9393939393939394,
+            "during_percent": {
+              "max": 100.0,
+              "mean": 98.0,
+              "median": 100.0,
+              "min": 84.0,
+              "samples": 33
+            },
+            "during_samples_ge_80_percent": 33,
+            "during_samples_ge_90_percent": 31,
+            "post_percent": {
+              "max": 98.0,
+              "mean": 94.4,
+              "median": 95.0,
+              "min": 92.0,
+              "samples": 5
+            },
+            "pre_percent": {
+              "max": 99.0,
+              "mean": 94.81818181818181,
+              "median": 93.0,
+              "min": 92.0,
+              "samples": 11
+            },
+            "samples": [
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 157.25,
+                "t": 1778301030.9606907
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 115.08,
+                "t": 1778301031.5101929
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 113.98,
+                "t": 1778301032.110826
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 113.94,
+                "t": 1778301032.6584542
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 105.96,
+                "t": 1778301033.2109404
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 84.81,
+                "t": 1778301033.779006
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1272.0,
+                "power_draw_w": 54.41,
+                "t": 1778301034.3288305
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 76.46,
+                "t": 1778301034.8816674
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 190.46,
+                "t": 1778301035.4298704
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 320.59,
+                "t": 1778301035.996331
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 379.17,
+                "t": 1778301036.5642982
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 374.73,
+                "t": 1778301037.1121674
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 95.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 376.42,
+                "t": 1778301037.6782677
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 93.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 379.83,
+                "t": 1778301038.2266273
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 93.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 387.94,
+                "t": 1778301038.7813084
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 393.68,
+                "t": 1778301039.3287241
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 393.0,
+                "t": 1778301039.8728256
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 389.28,
+                "t": 1778301040.447571
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 383.13,
+                "t": 1778301040.9971774
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 374.22,
+                "t": 1778301041.546568
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 371.05,
+                "t": 1778301042.1195643
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 91.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 372.51,
+                "t": 1778301042.6622002
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 84.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 368.47,
+                "t": 1778301043.22217
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 84.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 355.37,
+                "t": 1778301043.795325
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 358.73,
+                "t": 1778301044.360832
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1291.0,
+                "power_draw_w": 375.69,
+                "t": 1778301044.9140685
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 93.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 372.85,
+                "t": 1778301045.5779216
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 93.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 371.93,
+                "t": 1778301046.1126032
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 388.58,
+                "t": 1778301046.6961477
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 390.15,
+                "t": 1778301047.2574253
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 389.98,
+                "t": 1778301047.8525138
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 393.74,
+                "t": 1778301048.403037
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1962.0,
+                "power_draw_w": 394.2,
+                "t": 1778301048.9613214
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1962.0,
+                "power_draw_w": 393.71,
+                "t": 1778301049.530813
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1962.0,
+                "power_draw_w": 394.61,
+                "t": 1778301050.0974517
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1962.0,
+                "power_draw_w": 395.92,
+                "t": 1778301050.6731524
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2006.0,
+                "power_draw_w": 396.51,
+                "t": 1778301051.2253258
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2054.0,
+                "power_draw_w": 395.33,
+                "t": 1778301051.7912557
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2042.0,
+                "power_draw_w": 394.58,
+                "t": 1778301052.3615327
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2042.0,
+                "power_draw_w": 395.59,
+                "t": 1778301052.9288406
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2042.0,
+                "power_draw_w": 396.64,
+                "t": 1778301053.4795802
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 396.83,
+                "t": 1778301054.0271661
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 397.08,
+                "t": 1778301054.5810916
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 397.53,
+                "t": 1778301055.129566
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 397.57,
+                "t": 1778301055.6733925
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 397.87,
+                "t": 1778301056.2138116
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 398.27,
+                "t": 1778301056.7753015
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 396.31,
+                "t": 1778301057.3286412
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 393.13,
+                "t": 1778301057.900244
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 393.14,
+                "t": 1778301058.476311
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 392.4,
+                "t": 1778301059.0302753
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 392.3,
+                "t": 1778301059.5801158
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1695.0,
+                "power_draw_w": 393.27,
+                "t": 1778301060.130243
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 393.15,
+                "t": 1778301060.6600902
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 95.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 388.06,
+                "t": 1778301061.244795
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 95.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 385.21,
+                "t": 1778301061.7963865
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 386.41,
+                "t": 1778301062.3622818
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 383.84,
+                "t": 1778301062.9110038
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 379.84,
+                "t": 1778301063.476386
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 375.54,
+                "t": 1778301064.0277066
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1278.0,
+                "power_draw_w": 167.82,
+                "t": 1778301064.578624
+              }
+            ]
+          },
+          "invader": {
+            "during_iters_per_sec": {
+              "max": 251.6424823874124,
+              "mean": 248.48145356533885,
+              "median": 248.45354421328324,
+              "min": 244.2701158669499,
+              "samples": 11
+            },
+            "series": [
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 249.02767763194785,
+                "iters_total": 252,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301048.3591034,
+                "tflops_per_sec": 34.22610339929749,
+                "window_seconds": 1.0119357109069824
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 244.2701158669499,
+                "iters_total": 504,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301049.3907483,
+                "tflops_per_sec": 33.57222908923778,
+                "window_seconds": 1.0316448211669922
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 248.8293465550813,
+                "iters_total": 756,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301050.4034905,
+                "tflops_per_sec": 34.19884498365198,
+                "window_seconds": 1.012742280960083
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 248.08149550504464,
+                "iters_total": 1008,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301051.4192858,
+                "tflops_per_sec": 34.09606111798201,
+                "window_seconds": 1.0157952308654785
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 246.83612008267067,
+                "iters_total": 1260,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301052.440206,
+                "tflops_per_sec": 33.92489802325118,
+                "window_seconds": 1.0209202766418457
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 247.5333907261566,
+                "iters_total": 1512,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301053.4582505,
+                "tflops_per_sec": 34.020730170778634,
+                "window_seconds": 1.0180444717407227
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 250.8280588461855,
+                "iters_total": 1764,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301054.4629228,
+                "tflops_per_sec": 34.47354590923297,
+                "window_seconds": 1.0046722888946533
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 246.18410203030658,
+                "iters_total": 2016,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301055.486547,
+                "tflops_per_sec": 33.83528534448941,
+                "window_seconds": 1.0236241817474365
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 251.60965537368855,
+                "iters_total": 2268,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301056.4880984,
+                "tflops_per_sec": 34.580967718010335,
+                "window_seconds": 1.0015513896942139
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 248.45354421328324,
+                "iters_total": 2520,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301057.5023725,
+                "tflops_per_sec": 34.14719510308293,
+                "window_seconds": 1.0142741203308105
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 251.6424823874124,
+                "iters_total": 2772,
+                "pid": 118768,
+                "role": "invader",
+                "t": 1778301058.5037932,
+                "tflops_per_sec": 34.585479428422154,
+                "window_seconds": 1.0014207363128662
+              }
+            ],
+            "share_of_combined_during_iters": 0.447910071770221
+          },
+          "label": "invader_with_nvertake",
+          "process_returncodes": {
+            "invader": 0,
+            "resident": 0
+          },
+          "resident": {
+            "drop_during_vs_pre_percent": -37.928248170820154,
+            "during_iters_per_sec": {
+              "max": 479.0735612736962,
+              "mean": 306.27600608118246,
+              "median": 250.58679206430827,
+              "min": 240.37241187338478,
+              "samples": 18
+            },
+            "post_iters_per_sec": {
+              "max": 496.67522273598735,
+              "mean": 490.1213410623499,
+              "median": 493.06357514316585,
+              "min": 480.6252253078965,
+              "samples": 3
+            },
+            "pre_iters_per_sec": {
+              "max": 512.4297450921943,
+              "mean": 493.422526440123,
+              "median": 495.60719212478654,
+              "min": 473.6046551564336,
+              "samples": 5
+            },
+            "series": [
+              {
+                "delta_iters": 492,
+                "event": "throughput",
+                "iters_per_sec": 486.24523980523776,
+                "iters_total": 492,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301037.3213296,
+                "tflops_per_sec": 66.82903688957356,
+                "window_seconds": 1.0118350982666016
+              },
+              {
+                "delta_iters": 504,
+                "event": "throughput",
+                "iters_per_sec": 499.22580002196287,
+                "iters_total": 996,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301038.3308928,
+                "tflops_per_sec": 68.61307150124053,
+                "window_seconds": 1.0095632076263428
+              },
+              {
+                "delta_iters": 516,
+                "event": "throughput",
+                "iters_per_sec": 512.4297450921943,
+                "iters_total": 1512,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301039.33786,
+                "tflops_per_sec": 70.42780789339491,
+                "window_seconds": 1.006967306137085
+              },
+              {
+                "delta_iters": 504,
+                "event": "throughput",
+                "iters_per_sec": 495.60719212478654,
+                "iters_total": 2016,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301040.3547945,
+                "tflops_per_sec": 68.1157338188271,
+                "window_seconds": 1.0169343948364258
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 473.6046551564336,
+                "iters_total": 2496,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301041.368298,
+                "tflops_per_sec": 65.09172816416768,
+                "window_seconds": 1.0135035514831543
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 471.37074206853146,
+                "iters_total": 2976,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301042.3866048,
+                "tflops_per_sec": 64.78470148721901,
+                "window_seconds": 1.0183067321777344
+              },
+              {
+                "delta_iters": 468,
+                "event": "throughput",
+                "iters_per_sec": 458.14994398386733,
+                "iters_total": 3444,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301043.4081044,
+                "tflops_per_sec": 62.96764883439815,
+                "window_seconds": 1.0214996337890625
+              },
+              {
+                "delta_iters": 480,
+                "event": "throughput",
+                "iters_per_sec": 479.0735612736962,
+                "iters_total": 3924,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301044.4100382,
+                "tflops_per_sec": 65.84336889756088,
+                "window_seconds": 1.0019338130950928
+              },
+              {
+                "delta_iters": 468,
+                "event": "throughput",
+                "iters_per_sec": 467.8640236270901,
+                "iters_total": 4392,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301045.4103289,
+                "tflops_per_sec": 64.30274177450634,
+                "window_seconds": 1.0002906322479248
+              },
+              {
+                "delta_iters": 324,
+                "event": "throughput",
+                "iters_per_sec": 309.4070628682016,
+                "iters_total": 4716,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301046.457493,
+                "tflops_per_sec": 42.524582917450935,
+                "window_seconds": 1.0471642017364502
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 244.09805818919827,
+                "iters_total": 4968,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301047.489865,
+                "tflops_per_sec": 33.54858166207077,
+                "window_seconds": 1.032371997833252
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 250.1592500367441,
+                "iters_total": 5220,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301048.4972234,
+                "tflops_per_sec": 34.381625526390486,
+                "window_seconds": 1.0073583126068115
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 250.38586250868502,
+                "iters_total": 5472,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301049.50367,
+                "tflops_per_sec": 34.41277090737775,
+                "window_seconds": 1.0064465999603271
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 250.8699111696151,
+                "iters_total": 5724,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301050.5081747,
+                "tflops_per_sec": 34.47929804876551,
+                "window_seconds": 1.004504680633545
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 249.38568327240836,
+                "iters_total": 5976,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301051.5186577,
+                "tflops_per_sec": 34.27530731985946,
+                "window_seconds": 1.0104830265045166
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 247.31549763088623,
+                "iters_total": 6228,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301052.537599,
+                "tflops_per_sec": 33.9907831717959,
+                "window_seconds": 1.0189414024353027
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 250.78772161993155,
+                "iters_total": 6492,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301053.5902822,
+                "tflops_per_sec": 34.46800200307066,
+                "window_seconds": 1.0526831150054932
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 248.79613663390387,
+                "iters_total": 6744,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301054.6031597,
+                "tflops_per_sec": 34.19428064684047,
+                "window_seconds": 1.0128774642944336
+              },
+              {
+                "delta_iters": 264,
+                "event": "throughput",
+                "iters_per_sec": 253.88626508035173,
+                "iters_total": 7008,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301055.6429954,
+                "tflops_per_sec": 34.89386257355832,
+                "window_seconds": 1.0398356914520264
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 246.75233360351712,
+                "iters_total": 7260,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301056.6642623,
+                "tflops_per_sec": 33.91338249724121,
+                "window_seconds": 1.0212669372558594
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 242.29831382694002,
+                "iters_total": 7512,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301057.7043025,
+                "tflops_per_sec": 33.301226680404866,
+                "window_seconds": 1.0400402545928955
+              },
+              {
+                "delta_iters": 252,
+                "event": "throughput",
+                "iters_per_sec": 240.37241187338478,
+                "iters_total": 7764,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301058.7526758,
+                "tflops_per_sec": 33.03653273141855,
+                "window_seconds": 1.0483732223510742
+              },
+              {
+                "delta_iters": 360,
+                "event": "throughput",
+                "iters_per_sec": 351.99533019433125,
+                "iters_total": 8124,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301059.7754166,
+                "tflops_per_sec": 48.37786980893997,
+                "window_seconds": 1.0227408409118652
+              },
+              {
+                "delta_iters": 504,
+                "event": "throughput",
+                "iters_per_sec": 496.67522273598735,
+                "iters_total": 8628,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301060.7901642,
+                "tflops_per_sec": 68.2625228283066,
+                "window_seconds": 1.0147476196289062
+              },
+              {
+                "delta_iters": 504,
+                "event": "throughput",
+                "iters_per_sec": 493.06357514316585,
+                "iters_total": 9132,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301061.8123448,
+                "tflops_per_sec": 67.76614176283955,
+                "window_seconds": 1.0221805572509766
+              },
+              {
+                "delta_iters": 492,
+                "event": "throughput",
+                "iters_per_sec": 480.6252253078965,
+                "iters_total": 9624,
+                "pid": 118629,
+                "role": "resident",
+                "t": 1778301062.8360114,
+                "tflops_per_sec": 66.05662797856151,
+                "window_seconds": 1.0236666202545166
+              }
+            ]
+          },
+          "resource_split": {
+            "combined_during_iters_per_sec": 554.7574596465213,
+            "invader_share_of_combined_during_iters": 0.447910071770221,
+            "resident_share_of_combined_during_iters": 0.552089928229779
+          },
+          "windows": {
+            "invade_end": 1778301060.7256236,
+            "invade_start": 1778301042.3201108,
+            "post_end": 1778301063.7257004,
+            "pre_start": 1778301036.3162398
+          }
+        }
+      ]
+    },
+    {
+      "comparison": {
+        "invader_iters_per_sec_change_percent": -1.3565782761360718,
+        "invader_share_change_points": -0.008248858663094272,
+        "no_nvertake_gpu_util_during_mean": 99.48484848484848,
+        "no_nvertake_invader_share": 0.43155252398261357,
+        "resident_iters_per_sec_change_percent": 2.025001360018824,
+        "with_nvertake_gpu_util_during_mean": 99.25714285714285,
+        "with_nvertake_invader_share": 0.4233036653195193
+      },
+      "config": {
+        "batch_iters": 4,
+        "dtype": "float16",
+        "invade_seconds": 12.0,
+        "load_id": "gemm8192_fp16_batch4",
+        "matrix_size": 8192,
+        "post_seconds": 3.0,
+        "pre_seconds": 6.0,
+        "report_interval": 1.0,
+        "sample_interval": 0.5,
+        "warmup_seconds": 2.0
+      },
+      "load_id": "gemm8192_fp16_batch4",
+      "scenarios": [
+        {
+          "config": {
+            "batch_iters": 4,
+            "dtype": "float16",
+            "invade_seconds": 12.0,
+            "load_id": "gemm8192_fp16_batch4",
+            "matrix_size": 8192,
+            "post_seconds": 3.0,
+            "pre_seconds": 6.0,
+            "report_interval": 1.0,
+            "sample_interval": 0.5,
+            "warmup_seconds": 2.0
+          },
+          "gpu_util": {
+            "during_fraction_ge_80_percent": 1.0,
+            "during_fraction_ge_90_percent": 1.0,
+            "during_percent": {
+              "max": 100.0,
+              "mean": 99.48484848484848,
+              "median": 100.0,
+              "min": 96.0,
+              "samples": 33
+            },
+            "during_samples_ge_80_percent": 33,
+            "during_samples_ge_90_percent": 33,
+            "post_percent": {
+              "max": 99.0,
+              "mean": 98.0,
+              "median": 98.0,
+              "min": 97.0,
+              "samples": 6
+            },
+            "pre_percent": {
+              "max": 99.0,
+              "mean": 96.9090909090909,
+              "median": 97.0,
+              "min": 92.0,
+              "samples": 11
+            },
+            "samples": [
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 118.72,
+                "t": 1778301065.1258528
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 10.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 118.94,
+                "t": 1778301065.6777408
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 118.73,
+                "t": 1778301066.232924
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 118.3,
+                "t": 1778301066.7803438
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 106.16,
+                "t": 1778301067.3280864
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 84.38,
+                "t": 1778301067.8886743
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 2.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 69.73,
+                "t": 1778301068.478612
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 2.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 106.75,
+                "t": 1778301069.0565653
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 437.39,
+                "t": 1778301069.6099963
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 450.63,
+                "t": 1778301070.1681285
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 446.65,
+                "t": 1778301070.708643
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 95.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 449.22,
+                "t": 1778301071.27836
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 95.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 445.87,
+                "t": 1778301071.8280253
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 449.61,
+                "t": 1778301072.378832
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 446.59,
+                "t": 1778301072.9341068
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.27,
+                "t": 1778301073.493815
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 446.97,
+                "t": 1778301074.0497088
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.53,
+                "t": 1778301074.5939262
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.99,
+                "t": 1778301075.1452458
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.46,
+                "t": 1778301075.6962898
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.73,
+                "t": 1778301076.2432046
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.86,
+                "t": 1778301076.8025477
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.87,
+                "t": 1778301077.3624678
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.69,
+                "t": 1778301077.9442708
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 449.32,
+                "t": 1778301078.4928277
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.33,
+                "t": 1778301079.0605326
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1829.0,
+                "power_draw_w": 447.46,
+                "t": 1778301079.6281545
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.71,
+                "t": 1778301080.177818
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.14,
+                "t": 1778301080.726818
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.51,
+                "t": 1778301081.3079998
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.08,
+                "t": 1778301081.8614082
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.61,
+                "t": 1778301082.4242933
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 446.57,
+                "t": 1778301082.979049
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.54,
+                "t": 1778301083.537306
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.3,
+                "t": 1778301084.076579
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.1,
+                "t": 1778301084.6259665
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.55,
+                "t": 1778301085.192978
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.16,
+                "t": 1778301085.7361991
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.53,
+                "t": 1778301086.2793012
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.71,
+                "t": 1778301086.83014
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.61,
+                "t": 1778301087.3781617
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.15,
+                "t": 1778301087.9387681
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.9,
+                "t": 1778301088.5061765
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.29,
+                "t": 1778301089.0616994
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.88,
+                "t": 1778301089.623367
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.21,
+                "t": 1778301090.173082
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.38,
+                "t": 1778301090.738444
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.22,
+                "t": 1778301091.300975
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 449.03,
+                "t": 1778301091.845676
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.77,
+                "t": 1778301092.394993
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.98,
+                "t": 1778301092.9622066
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.86,
+                "t": 1778301093.5126371
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.61,
+                "t": 1778301094.0752687
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.36,
+                "t": 1778301094.6579676
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.27,
+                "t": 1778301095.2152872
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.44,
+                "t": 1778301095.7931924
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.58,
+                "t": 1778301096.365474
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.8,
+                "t": 1778301096.9215815
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.11,
+                "t": 1778301097.477168
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 450.54,
+                "t": 1778301098.0404682
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 59.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 324.11,
+                "t": 1778301098.5944636
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 59.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 176.05,
+                "t": 1778301099.1618562
+              }
+            ]
+          },
+          "invader": {
+            "during_iters_per_sec": {
+              "max": 33.95541527176823,
+              "mean": 33.53992659356876,
+              "median": 33.608414582355834,
+              "min": 33.03246040128564,
+              "samples": 11
+            },
+            "series": [
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.21983444528169,
+                "iters_total": 36,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301082.9442954,
+                "tflops_per_sec": 36.52559424538091,
+                "window_seconds": 1.0836899280548096
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.95541527176823,
+                "iters_total": 72,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301084.0045092,
+                "tflops_per_sec": 37.33437391727194,
+                "window_seconds": 1.0602138042449951
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.763767357617226,
+                "iters_total": 108,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301085.070741,
+                "tflops_per_sec": 37.12365480722389,
+                "window_seconds": 1.0662317276000977
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.682027003182945,
+                "iters_total": 144,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301086.1395602,
+                "tflops_per_sec": 37.03378033706487,
+                "window_seconds": 1.068819284439087
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.608414582355834,
+                "iters_total": 180,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301087.2107205,
+                "tflops_per_sec": 36.95284262441672,
+                "window_seconds": 1.0711603164672852
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.31237686693444,
+                "iters_total": 216,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301088.2914,
+                "tflops_per_sec": 36.627345714050655,
+                "window_seconds": 1.0806794166564941
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.661663097890724,
+                "iters_total": 252,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301089.3608658,
+                "tflops_per_sec": 37.01138998640914,
+                "window_seconds": 1.0694658756256104
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.34937042673163,
+                "iters_total": 288,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301090.4403465,
+                "tflops_per_sec": 36.66802056320049,
+                "window_seconds": 1.0794806480407715
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.78386951919469,
+                "iters_total": 324,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301091.5059438,
+                "tflops_per_sec": 37.14575736762174,
+                "window_seconds": 1.0655972957611084
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.56999355701332,
+                "iters_total": 360,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301092.57833,
+                "tflops_per_sec": 36.91059826030155,
+                "window_seconds": 1.0723862648010254
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.03246040128564,
+                "iters_total": 396,
+                "pid": 119232,
+                "role": "invader",
+                "t": 1778301093.668167,
+                "tflops_per_sec": 36.319574305263835,
+                "window_seconds": 1.0898370742797852
+              }
+            ],
+            "share_of_combined_during_iters": 0.43155252398261357
+          },
+          "label": "invader_no_nvertake",
+          "process_returncodes": {
+            "invader": 0,
+            "resident": 0
+          },
+          "resident": {
+            "drop_during_vs_pre_percent": -37.73929465840682,
+            "during_iters_per_sec": {
+              "max": 71.45954331563507,
+              "mean": 44.17929581774546,
+              "median": 33.73925358965347,
+              "min": 33.31438335990116,
+              "samples": 18
+            },
+            "post_iters_per_sec": {
+              "max": 70.71870832403461,
+              "mean": 70.14475864328796,
+              "median": 69.86373062604626,
+              "min": 69.851836979783,
+              "samples": 3
+            },
+            "pre_iters_per_sec": {
+              "max": 71.81953951669539,
+              "mean": 70.95855335296297,
+              "median": 71.02106738831505,
+              "min": 70.1588239872223,
+              "samples": 5
+            },
+            "series": [
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 71.02106738831505,
+                "iters_total": 72,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301071.2101383,
+                "tflops_per_sec": 78.08848941051527,
+                "window_seconds": 1.0137836933135986
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 71.81953951669539,
+                "iters_total": 144,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301072.212651,
+                "tflops_per_sec": 78.9664188001245,
+                "window_seconds": 1.0025126934051514
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.1588239872223,
+                "iters_total": 216,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301073.238894,
+                "tflops_per_sec": 77.14044276504067,
+                "window_seconds": 1.026242971420288
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.2750518004978,
+                "iters_total": 288,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301074.2634397,
+                "tflops_per_sec": 77.26823659720806,
+                "window_seconds": 1.024545669555664
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 71.51828407208431,
+                "iters_total": 360,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301075.2701752,
+                "tflops_per_sec": 78.6351849358438,
+                "window_seconds": 1.0067355632781982
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 71.45954331563507,
+                "iters_total": 432,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301076.2777383,
+                "tflops_per_sec": 78.5705987911035,
+                "window_seconds": 1.0075631141662598
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 71.41104628725795,
+                "iters_total": 504,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301077.2859857,
+                "tflops_per_sec": 78.51727574449026,
+                "window_seconds": 1.0082473754882812
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 71.36226090774417,
+                "iters_total": 576,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301078.2949224,
+                "tflops_per_sec": 78.46363565244941,
+                "window_seconds": 1.0089366436004639
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 71.09456765168899,
+                "iters_total": 648,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301079.307658,
+                "tflops_per_sec": 78.16930380473951,
+                "window_seconds": 1.0127356052398682
+              },
+              {
+                "delta_iters": 64,
+                "event": "throughput",
+                "iters_per_sec": 59.376854535082465,
+                "iters_total": 712,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301080.385519,
+                "tflops_per_sec": 65.2855419820873,
+                "window_seconds": 1.0778610706329346
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.66313400003433,
+                "iters_total": 748,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301081.4549382,
+                "tflops_per_sec": 37.01300726041936,
+                "window_seconds": 1.0694191455841064
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 34.18311261471535,
+                "iters_total": 784,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301082.5080898,
+                "tflops_per_sec": 37.58472979345599,
+                "window_seconds": 1.0531516075134277
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.73164306080008,
+                "iters_total": 820,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301083.575337,
+                "tflops_per_sec": 37.088333769339314,
+                "window_seconds": 1.0672471523284912
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.31438335990116,
+                "iters_total": 856,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301084.6559513,
+                "tflops_per_sec": 36.62955187639861,
+                "window_seconds": 1.0806143283843994
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.69246629078599,
+                "iters_total": 892,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301085.7244394,
+                "tflops_per_sec": 37.04525845517011,
+                "window_seconds": 1.0684881210327148
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.71552477738635,
+                "iters_total": 928,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301086.7921968,
+                "tflops_per_sec": 37.07061152930613,
+                "window_seconds": 1.0677573680877686
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.74686411850686,
+                "iters_total": 964,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301087.8589625,
+                "tflops_per_sec": 37.10506949927497,
+                "window_seconds": 1.0667657852172852
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.875534426884165,
+                "iters_total": 1000,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301088.9216764,
+                "tflops_per_sec": 37.24654399948533,
+                "window_seconds": 1.062713861465454
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.59510447314882,
+                "iters_total": 1036,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301089.993261,
+                "tflops_per_sec": 36.93820800457664,
+                "window_seconds": 1.071584701538086
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.43206321927009,
+                "iters_total": 1072,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301091.0700717,
+                "tflops_per_sec": 36.7589422501298,
+                "window_seconds": 1.076810598373413
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.55690775408319,
+                "iters_total": 1108,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301092.1428761,
+                "tflops_per_sec": 36.89621026782108,
+                "window_seconds": 1.0728044509887695
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.584090483462504,
+                "iters_total": 1144,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301093.2148123,
+                "tflops_per_sec": 36.92609799484833,
+                "window_seconds": 1.0719361305236816
+              },
+              {
+                "delta_iters": 48,
+                "event": "throughput",
+                "iters_per_sec": 46.43222344303083,
+                "iters_total": 1192,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301094.248577,
+                "tflops_per_sec": 51.05276957910577,
+                "window_seconds": 1.0337648391723633
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 69.86373062604626,
+                "iters_total": 1264,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301095.2791548,
+                "tflops_per_sec": 76.8159841831481,
+                "window_seconds": 1.0305776596069336
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 69.851836979783,
+                "iters_total": 1336,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301096.309908,
+                "tflops_per_sec": 76.802906980785,
+                "window_seconds": 1.0307531356811523
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.71870832403461,
+                "iters_total": 1408,
+                "pid": 119106,
+                "role": "resident",
+                "t": 1778301097.328026,
+                "tflops_per_sec": 77.75604210357545,
+                "window_seconds": 1.018118143081665
+              }
+            ]
+          },
+          "resource_split": {
+            "combined_during_iters_per_sec": 77.71922241131422,
+            "invader_share_of_combined_during_iters": 0.43155252398261357,
+            "resident_share_of_combined_during_iters": 0.5684474760173864
+          },
+          "windows": {
+            "invade_end": 1778301095.1672404,
+            "invade_start": 1778301076.2633555,
+            "post_end": 1778301098.1679885,
+            "pre_start": 1778301070.262952
+          }
+        },
+        {
+          "config": {
+            "batch_iters": 4,
+            "dtype": "float16",
+            "invade_seconds": 12.0,
+            "load_id": "gemm8192_fp16_batch4",
+            "matrix_size": 8192,
+            "post_seconds": 3.0,
+            "pre_seconds": 6.0,
+            "report_interval": 1.0,
+            "sample_interval": 0.5,
+            "warmup_seconds": 2.0
+          },
+          "gpu_util": {
+            "during_fraction_ge_80_percent": 1.0,
+            "during_fraction_ge_90_percent": 1.0,
+            "during_percent": {
+              "max": 100.0,
+              "mean": 99.25714285714285,
+              "median": 100.0,
+              "min": 92.0,
+              "samples": 35
+            },
+            "during_samples_ge_80_percent": 35,
+            "during_samples_ge_90_percent": 35,
+            "post_percent": {
+              "max": 99.0,
+              "mean": 97.6,
+              "median": 98.0,
+              "min": 94.0,
+              "samples": 5
+            },
+            "pre_percent": {
+              "max": 100.0,
+              "mean": 98.2,
+              "median": 99.0,
+              "min": 94.0,
+              "samples": 10
+            },
+            "samples": [
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 176.05,
+                "t": 1778301099.4957318
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 126.42,
+                "t": 1778301100.0439246
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 125.06,
+                "t": 1778301100.5948403
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 112.85,
+                "t": 1778301101.1458488
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 861.0,
+                "power_draw_w": 89.69,
+                "t": 1778301101.7286925
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 873.0,
+                "power_draw_w": 73.61,
+                "t": 1778301102.2907555
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 91.94,
+                "t": 1778301102.876978
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 199.1,
+                "t": 1778301103.4416466
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 96.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 363.77,
+                "t": 1778301103.9957309
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 449.04,
+                "t": 1778301104.5491016
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.56,
+                "t": 1778301105.0928624
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.32,
+                "t": 1778301105.6436105
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.71,
+                "t": 1778301106.215116
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 97.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.38,
+                "t": 1778301106.776427
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.2,
+                "t": 1778301107.3278296
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.08,
+                "t": 1778301107.884183
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.51,
+                "t": 1778301108.436304
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.27,
+                "t": 1778301108.9949243
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.31,
+                "t": 1778301109.5674453
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.27,
+                "t": 1778301110.1072395
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 95.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 446.6,
+                "t": 1778301110.6618378
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.41,
+                "t": 1778301111.2183068
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 446.64,
+                "t": 1778301111.79246
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.51,
+                "t": 1778301112.374233
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 446.77,
+                "t": 1778301112.9110708
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 449.09,
+                "t": 1778301113.5037098
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1579.0,
+                "power_draw_w": 448.65,
+                "t": 1778301114.0606186
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 446.68,
+                "t": 1778301114.6701212
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 449.08,
+                "t": 1778301115.2558212
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 446.65,
+                "t": 1778301115.8179865
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.32,
+                "t": 1778301116.3600874
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2336.0,
+                "power_draw_w": 447.49,
+                "t": 1778301116.924961
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2538.0,
+                "power_draw_w": 448.03,
+                "t": 1778301117.4868672
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2538.0,
+                "power_draw_w": 447.77,
+                "t": 1778301118.0437691
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2538.0,
+                "power_draw_w": 446.71,
+                "t": 1778301118.604101
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2582.0,
+                "power_draw_w": 448.31,
+                "t": 1778301119.1597185
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2630.0,
+                "power_draw_w": 446.79,
+                "t": 1778301119.7405012
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2630.0,
+                "power_draw_w": 448.17,
+                "t": 1778301120.3173594
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2630.0,
+                "power_draw_w": 447.22,
+                "t": 1778301120.8740592
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2630.0,
+                "power_draw_w": 447.98,
+                "t": 1778301121.4431753
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.26,
+                "t": 1778301122.0031972
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.62,
+                "t": 1778301122.5731483
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.73,
+                "t": 1778301123.127642
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.27,
+                "t": 1778301123.6874726
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.8,
+                "t": 1778301124.2395492
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.48,
+                "t": 1778301124.7765868
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.5,
+                "t": 1778301125.326822
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.24,
+                "t": 1778301125.887366
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.98,
+                "t": 1778301126.4547713
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.88,
+                "t": 1778301127.017594
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 448.19,
+                "t": 1778301127.5657191
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.72,
+                "t": 1778301128.1835918
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 100.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.52,
+                "t": 1778301128.7370622
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 444.58,
+                "t": 1778301129.2780027
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 92.0,
+                "memory_used_mib": 2271.0,
+                "power_draw_w": 447.19,
+                "t": 1778301129.8426685
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 446.22,
+                "t": 1778301130.422288
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 98.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.48,
+                "t": 1778301130.9772656
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.11,
+                "t": 1778301131.5403922
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.06,
+                "t": 1778301132.0883527
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 94.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 448.53,
+                "t": 1778301132.652643
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 447.44,
+                "t": 1778301133.2253494
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 99.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 340.2,
+                "t": 1778301133.789625
+              },
+              {
+                "error": null,
+                "gpu_util_percent": 0.0,
+                "memory_used_mib": 1566.0,
+                "power_draw_w": 197.47,
+                "t": 1778301134.3428187
+              }
+            ]
+          },
+          "invader": {
+            "during_iters_per_sec": {
+              "max": 34.12615891570105,
+              "mean": 33.08493123556842,
+              "median": 33.02558234143909,
+              "min": 32.64268552367322,
+              "samples": 11
+            },
+            "series": [
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.02558234143909,
+                "iters_total": 36,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301117.428514,
+                "tflops_per_sec": 36.31201179848602,
+                "window_seconds": 1.0900640487670898
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.833481705049785,
+                "iters_total": 72,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301118.5249557,
+                "tflops_per_sec": 36.100794915072804,
+                "window_seconds": 1.0964417457580566
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.178672474666904,
+                "iters_total": 108,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301119.6099901,
+                "tflops_per_sec": 36.48033618006777,
+                "window_seconds": 1.0850343704223633
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.88665745809424,
+                "iters_total": 144,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301120.704659,
+                "tflops_per_sec": 36.15926227386093,
+                "window_seconds": 1.0946688652038574
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 34.12615891570105,
+                "iters_total": 180,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301121.7595682,
+                "tflops_per_sec": 37.52210853914492,
+                "window_seconds": 1.0549092292785645
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.8936640760405,
+                "iters_total": 216,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301122.854004,
+                "tflops_per_sec": 36.16696613176423,
+                "window_seconds": 1.094435691833496
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.29187011767196,
+                "iters_total": 252,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301123.935349,
+                "tflops_per_sec": 36.60479830478867,
+                "window_seconds": 1.0813450813293457
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.37243357945038,
+                "iters_total": 288,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301125.0140836,
+                "tflops_per_sec": 36.69337876778793,
+                "window_seconds": 1.0787346363067627
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.03761359794941,
+                "iters_total": 324,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301126.1037507,
+                "tflops_per_sec": 36.325240304915866,
+                "window_seconds": 1.0896670818328857
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.645423801516095,
+                "iters_total": 360,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301127.2065086,
+                "tflops_per_sec": 35.89402306344233,
+                "window_seconds": 1.1027579307556152
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.64268552367322,
+                "iters_total": 396,
+                "pid": 119790,
+                "role": "invader",
+                "t": 1778301128.309359,
+                "tflops_per_sec": 35.89101229511402,
+                "window_seconds": 1.1028504371643066
+              }
+            ],
+            "share_of_combined_during_iters": 0.4233036653195193
+          },
+          "label": "invader_with_nvertake",
+          "process_returncodes": {
+            "invader": 0,
+            "resident": 0
+          },
+          "resident": {
+            "drop_during_vs_pre_percent": -35.79639820960629,
+            "during_iters_per_sec": {
+              "max": 70.56436982856256,
+              "mean": 45.07392715890155,
+              "median": 33.422110152339094,
+              "min": 32.338968283833424,
+              "samples": 19
+            },
+            "post_iters_per_sec": {
+              "max": 69.93801200333954,
+              "mean": 69.01219407046977,
+              "median": 68.8218866397204,
+              "min": 68.2766835683494,
+              "samples": 3
+            },
+            "pre_iters_per_sec": {
+              "max": 70.69395888189312,
+              "mean": 70.20467061342595,
+              "median": 70.21085770549278,
+              "min": 69.76210280182764,
+              "samples": 5
+            },
+            "series": [
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 69.76210280182764,
+                "iters_total": 72,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301105.5724123,
+                "tflops_per_sec": 76.70424320871416,
+                "window_seconds": 1.0320789813995361
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.26419477328568,
+                "iters_total": 144,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301106.5971162,
+                "tflops_per_sec": 77.25629916954524,
+                "window_seconds": 1.0247039794921875
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.69395888189312,
+                "iters_total": 216,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301107.6155908,
+                "tflops_per_sec": 77.72882980415991,
+                "window_seconds": 1.0184745788574219
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.21085770549278,
+                "iters_total": 288,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301108.6410732,
+                "tflops_per_sec": 77.19765444331549,
+                "window_seconds": 1.025482416152954
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.09223890463052,
+                "iters_total": 360,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301109.668291,
+                "tflops_per_sec": 77.06723169249457,
+                "window_seconds": 1.0272178649902344
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 69.40659237614301,
+                "iters_total": 432,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301110.7056565,
+                "tflops_per_sec": 76.31335536187831,
+                "window_seconds": 1.037365436553955
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 68.68586083778631,
+                "iters_total": 504,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301111.7539072,
+                "tflops_per_sec": 75.52090265495023,
+                "window_seconds": 1.048250675201416
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 70.56436982856256,
+                "iters_total": 576,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301112.7742522,
+                "tflops_per_sec": 77.58634513319049,
+                "window_seconds": 1.0203449726104736
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 69.7153988235248,
+                "iters_total": 648,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301113.8070226,
+                "tflops_per_sec": 76.65289164150678,
+                "window_seconds": 1.0327703952789307
+              },
+              {
+                "delta_iters": 64,
+                "event": "throughput",
+                "iters_per_sec": 62.30017803336147,
+                "iters_total": 712,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301114.834307,
+                "tflops_per_sec": 68.49977016019587,
+                "window_seconds": 1.0272843837738037
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.422110152339094,
+                "iters_total": 748,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301115.9114382,
+                "tflops_per_sec": 36.747998737307135,
+                "window_seconds": 1.0771312713623047
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.01588423325038,
+                "iters_total": 784,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301117.0018225,
+                "tflops_per_sec": 36.3013486157651,
+                "window_seconds": 1.0903842449188232
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.5779290886,
+                "iters_total": 820,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301118.0739553,
+                "tflops_per_sec": 36.91932346955369,
+                "window_seconds": 1.0721328258514404
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.18320047521692,
+                "iters_total": 856,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301119.1588416,
+                "tflops_per_sec": 36.4853147693231,
+                "window_seconds": 1.0848863124847412
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.1835213466192,
+                "iters_total": 892,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301120.2437174,
+                "tflops_per_sec": 36.485667571160924,
+                "window_seconds": 1.0848758220672607
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.338968283833424,
+                "iters_total": 928,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301121.3569255,
+                "tflops_per_sec": 35.557071658354126,
+                "window_seconds": 1.1132080554962158
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.360267827849064,
+                "iters_total": 964,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301122.4360535,
+                "tflops_per_sec": 36.68000238244165,
+                "window_seconds": 1.0791280269622803
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.09692946654731,
+                "iters_total": 1000,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301123.5237677,
+                "tflops_per_sec": 36.39045879215089,
+                "window_seconds": 1.0877141952514648
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.802888662616205,
+                "iters_total": 1036,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301124.621232,
+                "tflops_per_sec": 36.067157509188036,
+                "window_seconds": 1.0974643230438232
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 32.84290863057886,
+                "iters_total": 1072,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301125.717359,
+                "tflops_per_sec": 36.111159929306204,
+                "window_seconds": 1.0961270332336426
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.316507712919474,
+                "iters_total": 1108,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301126.7979045,
+                "tflops_per_sec": 36.63188762724375,
+                "window_seconds": 1.080545425415039
+              },
+              {
+                "delta_iters": 36,
+                "event": "throughput",
+                "iters_per_sec": 33.59320602490964,
+                "iters_total": 1144,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301127.8695498,
+                "tflops_per_sec": 36.93612063866293,
+                "window_seconds": 1.0716452598571777
+              },
+              {
+                "delta_iters": 52,
+                "event": "throughput",
+                "iters_per_sec": 50.00912759556827,
+                "iters_total": 1196,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301128.90936,
+                "tflops_per_sec": 54.985617286260954,
+                "window_seconds": 1.0398101806640625
+              },
+              {
+                "delta_iters": 68,
+                "event": "throughput",
+                "iters_per_sec": 67.98876661890343,
+                "iters_total": 1264,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301129.9095252,
+                "tflops_per_sec": 74.75443945563308,
+                "window_seconds": 1.0001652240753174
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 68.2766835683494,
+                "iters_total": 1336,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301130.964058,
+                "tflops_per_sec": 75.07100748938272,
+                "window_seconds": 1.054532766342163
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 69.93801200333954,
+                "iters_total": 1408,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301131.993541,
+                "tflops_per_sec": 76.89765742120927,
+                "window_seconds": 1.0294830799102783
+              },
+              {
+                "delta_iters": 72,
+                "event": "throughput",
+                "iters_per_sec": 68.8218866397204,
+                "iters_total": 1480,
+                "pid": 119523,
+                "role": "resident",
+                "t": 1778301133.0397198,
+                "tflops_per_sec": 75.67046460585433,
+                "window_seconds": 1.0461788177490234
+              }
+            ]
+          },
+          "resource_split": {
+            "combined_during_iters_per_sec": 78.15885839446997,
+            "invader_share_of_combined_during_iters": 0.4233036653195193,
+            "resident_share_of_combined_during_iters": 0.5766963346804806
+          },
+          "windows": {
+            "invade_end": 1778301130.157617,
+            "invade_start": 1778301110.631568,
+            "post_end": 1778301133.157944,
+            "pre_start": 1778301104.6311498
+          }
+        }
+      ]
+    }
+  ],
+  "started_at": "2026-05-09T12:29:56+0800",
+  "summary": {
+    "interpretation": "This experiment verifies saturated two-process GPU contention. For these bulk GEMM workloads, nVertake did not increase the invader's throughput share, so the current stream-priority implementation does not prove stronger inter-process GPU resource allocation under full utilization.",
+    "loads": [
+      {
+        "invader_iters_per_sec_change_percent": -1.1219601119710392,
+        "invader_share_change_points": -0.0025964851339737027,
+        "load_id": "gemm4096_fp16_batch12",
+        "no_nvertake_gpu_util_during_mean": 97.65714285714286,
+        "no_nvertake_gpu_util_ge90_fraction": 0.9428571428571428,
+        "no_nvertake_invader_share": 0.4505065569041947,
+        "nvertake_improved_invader_share": false,
+        "nvertake_improved_invader_throughput": false,
+        "resident_iters_per_sec_change_percent": -0.07884473798027553,
+        "saturated_competition": true,
+        "with_nvertake_gpu_util_during_mean": 98.0,
+        "with_nvertake_gpu_util_ge90_fraction": 0.9393939393939394,
+        "with_nvertake_invader_share": 0.447910071770221
+      },
+      {
+        "invader_iters_per_sec_change_percent": -1.3565782761360718,
+        "invader_share_change_points": -0.008248858663094272,
+        "load_id": "gemm8192_fp16_batch4",
+        "no_nvertake_gpu_util_during_mean": 99.48484848484848,
+        "no_nvertake_gpu_util_ge90_fraction": 1.0,
+        "no_nvertake_invader_share": 0.43155252398261357,
+        "nvertake_improved_invader_share": false,
+        "nvertake_improved_invader_throughput": false,
+        "resident_iters_per_sec_change_percent": 2.025001360018824,
+        "saturated_competition": true,
+        "with_nvertake_gpu_util_during_mean": 99.25714285714285,
+        "with_nvertake_gpu_util_ge90_fraction": 1.0,
+        "with_nvertake_invader_share": 0.4233036653195193
+      }
+    ],
+    "nvertake_improved_invader_share_loads": 0,
+    "nvertake_improved_invader_throughput_loads": 0,
+    "saturated_loads": 2,
+    "total_loads": 2
+  }
+}

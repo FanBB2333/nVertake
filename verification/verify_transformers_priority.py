@@ -20,6 +20,34 @@ from typing import Any, Dict, Iterable, List, Optional
 import torch
 
 
+MODEL_CONFIGS: Dict[str, Dict[str, int]] = {
+    "tiny": {
+        "vocab_size": 256,
+        "n_positions": 64,
+        "n_ctx": 64,
+        "n_embd": 96,
+        "n_layer": 2,
+        "n_head": 4,
+    },
+    "small": {
+        "vocab_size": 512,
+        "n_positions": 96,
+        "n_ctx": 96,
+        "n_embd": 160,
+        "n_layer": 4,
+        "n_head": 5,
+    },
+    "medium": {
+        "vocab_size": 1024,
+        "n_positions": 128,
+        "n_ctx": 128,
+        "n_embd": 256,
+        "n_layer": 6,
+        "n_head": 8,
+    },
+}
+
+
 @dataclass
 class ScenarioResult:
     scenario: str
@@ -68,16 +96,14 @@ def _assert_priority_stream(result: ScenarioResult, expect_priority: bool) -> No
         )
 
 
-def _tiny_gpt2_model(device: int):
+def _gpt2_model(device: int, model_size: str):
     from transformers import AutoModelForCausalLM, GPT2Config
 
+    if model_size not in MODEL_CONFIGS:
+        raise ValueError(f"Unknown model size: {model_size}")
+
     config = GPT2Config(
-        vocab_size=256,
-        n_positions=64,
-        n_ctx=64,
-        n_embd=96,
-        n_layer=2,
-        n_head=4,
+        **MODEL_CONFIGS[model_size],
         bos_token_id=1,
         eos_token_id=2,
         pad_token_id=0,
@@ -86,10 +112,16 @@ def _tiny_gpt2_model(device: int):
     return model.to(f"cuda:{device}")
 
 
-def _random_batch(device: int, batch_size: int = 2, seq_len: int = 32) -> Dict[str, torch.Tensor]:
+def _random_batch(
+    device: int,
+    *,
+    vocab_size: int,
+    batch_size: int,
+    seq_len: int,
+) -> Dict[str, torch.Tensor]:
     input_ids = torch.randint(
         low=3,
-        high=255,
+        high=vocab_size - 1,
         size=(batch_size, seq_len),
         device=f"cuda:{device}",
         dtype=torch.long,
@@ -101,12 +133,25 @@ def _random_batch(device: int, batch_size: int = 2, seq_len: int = 32) -> Dict[s
     }
 
 
-def run_transformers_inference(device: int, expect_priority: bool, steps: int) -> ScenarioResult:
+def run_transformers_inference(
+    device: int,
+    expect_priority: bool,
+    steps: int,
+    model_size: str,
+    batch_size: int,
+    seq_len: int,
+) -> ScenarioResult:
     before = _stream_state(device)
     start = time.perf_counter()
-    model = _tiny_gpt2_model(device)
+    model = _gpt2_model(device, model_size)
     model.eval()
-    batch = _random_batch(device)
+    model_config = MODEL_CONFIGS[model_size]
+    batch = _random_batch(
+        device,
+        vocab_size=model_config["vocab_size"],
+        batch_size=batch_size,
+        seq_len=seq_len,
+    )
 
     with torch.inference_mode():
         for _ in range(steps):
@@ -133,6 +178,10 @@ def run_transformers_inference(device: int, expect_priority: bool, steps: int) -
         elapsed_seconds=elapsed,
         details={
             "steps": steps,
+            "model_size": model_size,
+            "batch_size": batch_size,
+            "seq_len": seq_len,
+            "model_config": model_config,
             "logits_shape": list(logits.shape),
             "model_class": type(model).__name__,
         },
@@ -141,16 +190,25 @@ def run_transformers_inference(device: int, expect_priority: bool, steps: int) -
     return result
 
 
-def run_peft_lora_training(device: int, expect_priority: bool, steps: int) -> ScenarioResult:
+def run_peft_lora_training(
+    device: int,
+    expect_priority: bool,
+    steps: int,
+    model_size: str,
+    batch_size: int,
+    seq_len: int,
+    lora_rank: int,
+) -> ScenarioResult:
     from peft import LoraConfig, TaskType, get_peft_model
 
     before = _stream_state(device)
     start = time.perf_counter()
-    model = _tiny_gpt2_model(device)
+    model = _gpt2_model(device, model_size)
+    model_config = MODEL_CONFIGS[model_size]
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
-        r=4,
-        lora_alpha=8,
+        r=lora_rank,
+        lora_alpha=lora_rank * 2,
         lora_dropout=0.0,
         target_modules=["c_attn", "c_proj"],
     )
@@ -163,7 +221,12 @@ def run_peft_lora_training(device: int, expect_priority: bool, steps: int) -> Sc
 
     losses: List[float] = []
     for _ in range(steps):
-        batch = _random_batch(device)
+        batch = _random_batch(
+            device,
+            vocab_size=model_config["vocab_size"],
+            batch_size=batch_size,
+            seq_len=seq_len,
+        )
         optimizer.zero_grad(set_to_none=True)
         outputs = model(**batch)
         loss = outputs.loss
@@ -188,6 +251,11 @@ def run_peft_lora_training(device: int, expect_priority: bool, steps: int) -> Sc
         elapsed_seconds=elapsed,
         details={
             "steps": steps,
+            "model_size": model_size,
+            "batch_size": batch_size,
+            "seq_len": seq_len,
+            "lora_rank": lora_rank,
+            "model_config": model_config,
             "losses": losses,
             "trainable_parameters": int(
                 sum(param.numel() for param in model.parameters() if param.requires_grad)
@@ -215,6 +283,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--device", type=int, default=0, help="CUDA device index.")
     parser.add_argument("--steps", type=int, default=3, help="Workload iterations.")
+    parser.add_argument(
+        "--model-size",
+        choices=tuple(MODEL_CONFIGS),
+        default="tiny",
+        help="Random GPT-2 config size.",
+    )
+    parser.add_argument("--batch-size", type=int, default=2, help="Batch size.")
+    parser.add_argument("--seq-len", type=int, default=32, help="Sequence length.")
+    parser.add_argument("--lora-rank", type=int, default=4, help="PEFT LoRA rank.")
     parser.add_argument(
         "--expect-priority",
         action="store_true",
@@ -245,6 +322,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         device=args.device,
                         expect_priority=args.expect_priority,
                         steps=args.steps,
+                        model_size=args.model_size,
+                        batch_size=args.batch_size,
+                        seq_len=args.seq_len,
                     )
                 )
             elif scenario == "lora":
@@ -253,6 +333,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                         device=args.device,
                         expect_priority=args.expect_priority,
                         steps=args.steps,
+                        model_size=args.model_size,
+                        batch_size=args.batch_size,
+                        seq_len=args.seq_len,
+                        lora_rank=args.lora_rank,
                     )
                 )
             else:

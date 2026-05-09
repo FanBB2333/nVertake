@@ -1,0 +1,812 @@
+{
+  "all_effective": true,
+  "definition_of_effective": "baseline reports current_is_default_before/after=true, while nvertake_run reports current_is_default_before/after=false and the selected current stream differs from default_stream",
+  "effective_cases": 6,
+  "finished_at": "2026-05-09T12:22:21+0800",
+  "results": [
+    {
+      "baseline": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "inference",
+          "--model-size",
+          "tiny",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "32",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "4",
+          "--json"
+        ],
+        "elapsed_seconds": 13.72346672322601,
+        "mode": "baseline",
+        "returncode": 0,
+        "stderr_tail": "",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": true,
+            "current_is_default_before": true,
+            "current_stream_after": 0,
+            "current_stream_before": 0,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "logits_shape": [
+                2,
+                32,
+                256
+              ],
+              "model_class": "GPT2LMHeadModel",
+              "model_config": {
+                "n_ctx": 64,
+                "n_embd": 96,
+                "n_head": 4,
+                "n_layer": 2,
+                "n_positions": 64,
+                "vocab_size": 256
+              },
+              "model_size": "tiny",
+              "seq_len": 32,
+              "steps": 2
+            },
+            "device": 0,
+            "elapsed_seconds": 7.396725882776082,
+            "ok": true,
+            "scenario": "transformers_inference"
+          }
+        ]
+      },
+      "case": {
+        "batch_size": 2,
+        "case_id": "inference_tiny_batch2_seq32",
+        "lora_rank": 4,
+        "model_size": "tiny",
+        "scenario": "inference",
+        "seq_len": 32,
+        "steps": 2
+      },
+      "effective": true,
+      "nvertake_run": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "-m",
+          "nvertake.cli",
+          "--nice",
+          "0",
+          "run",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "inference",
+          "--model-size",
+          "tiny",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "32",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "4",
+          "--json",
+          "--expect-priority"
+        ],
+        "elapsed_seconds": 17.534115808084607,
+        "mode": "nvertake_run",
+        "returncode": 0,
+        "stderr_tail": "2026-05-09 12:19:27,488 - nvertake - INFO - Set process nice value to 0\n2026-05-09 12:19:27,489 - nvertake - INFO - Running: /home/l1ght/anaconda3/envs/fakegpu/bin/python3 /home/l1ght/repos/nVertake/verification/verify_transformers_priority.py --scenario inference --model-size tiny --batch-size 2 --seq-len 32 --steps 2 --lora-rank 4 --json --expect-priority\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": false,
+            "current_is_default_before": false,
+            "current_stream_after": 212121904,
+            "current_stream_before": 212121904,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "logits_shape": [
+                2,
+                32,
+                256
+              ],
+              "model_class": "GPT2LMHeadModel",
+              "model_config": {
+                "n_ctx": 64,
+                "n_embd": 96,
+                "n_head": 4,
+                "n_layer": 2,
+                "n_positions": 64,
+                "vocab_size": 256
+              },
+              "model_size": "tiny",
+              "seq_len": 32,
+              "steps": 2
+            },
+            "device": 0,
+            "elapsed_seconds": 7.286610944196582,
+            "ok": true,
+            "scenario": "transformers_inference"
+          }
+        ]
+      },
+      "reason": "baseline used default stream; nVertake used non-default priority stream"
+    },
+    {
+      "baseline": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "inference",
+          "--model-size",
+          "small",
+          "--batch-size",
+          "4",
+          "--seq-len",
+          "48",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "4",
+          "--json"
+        ],
+        "elapsed_seconds": 14.056409000884742,
+        "mode": "baseline",
+        "returncode": 0,
+        "stderr_tail": "",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": true,
+            "current_is_default_before": true,
+            "current_stream_after": 0,
+            "current_stream_before": 0,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 4,
+              "logits_shape": [
+                4,
+                48,
+                512
+              ],
+              "model_class": "GPT2LMHeadModel",
+              "model_config": {
+                "n_ctx": 96,
+                "n_embd": 160,
+                "n_head": 5,
+                "n_layer": 4,
+                "n_positions": 96,
+                "vocab_size": 512
+              },
+              "model_size": "small",
+              "seq_len": 48,
+              "steps": 2
+            },
+            "device": 0,
+            "elapsed_seconds": 7.567842355929315,
+            "ok": true,
+            "scenario": "transformers_inference"
+          }
+        ]
+      },
+      "case": {
+        "batch_size": 4,
+        "case_id": "inference_small_batch4_seq48",
+        "lora_rank": 4,
+        "model_size": "small",
+        "scenario": "inference",
+        "seq_len": 48,
+        "steps": 2
+      },
+      "effective": true,
+      "nvertake_run": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "-m",
+          "nvertake.cli",
+          "--nice",
+          "0",
+          "run",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "inference",
+          "--model-size",
+          "small",
+          "--batch-size",
+          "4",
+          "--seq-len",
+          "48",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "4",
+          "--json",
+          "--expect-priority"
+        ],
+        "elapsed_seconds": 18.70776798389852,
+        "mode": "nvertake_run",
+        "returncode": 0,
+        "stderr_tail": "2026-05-09 12:19:58,951 - nvertake - INFO - Set process nice value to 0\n2026-05-09 12:19:58,952 - nvertake - INFO - Running: /home/l1ght/anaconda3/envs/fakegpu/bin/python3 /home/l1ght/repos/nVertake/verification/verify_transformers_priority.py --scenario inference --model-size small --batch-size 4 --seq-len 48 --steps 2 --lora-rank 4 --json --expect-priority\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": false,
+            "current_is_default_before": false,
+            "current_stream_after": 441969952,
+            "current_stream_before": 441969952,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 4,
+              "logits_shape": [
+                4,
+                48,
+                512
+              ],
+              "model_class": "GPT2LMHeadModel",
+              "model_config": {
+                "n_ctx": 96,
+                "n_embd": 160,
+                "n_head": 5,
+                "n_layer": 4,
+                "n_positions": 96,
+                "vocab_size": 512
+              },
+              "model_size": "small",
+              "seq_len": 48,
+              "steps": 2
+            },
+            "device": 0,
+            "elapsed_seconds": 7.697022218257189,
+            "ok": true,
+            "scenario": "transformers_inference"
+          }
+        ]
+      },
+      "reason": "baseline used default stream; nVertake used non-default priority stream"
+    },
+    {
+      "baseline": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "inference",
+          "--model-size",
+          "medium",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "64",
+          "--steps",
+          "1",
+          "--lora-rank",
+          "4",
+          "--json"
+        ],
+        "elapsed_seconds": 12.980465933214873,
+        "mode": "baseline",
+        "returncode": 0,
+        "stderr_tail": "",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": true,
+            "current_is_default_before": true,
+            "current_stream_after": 0,
+            "current_stream_before": 0,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "logits_shape": [
+                2,
+                64,
+                1024
+              ],
+              "model_class": "GPT2LMHeadModel",
+              "model_config": {
+                "n_ctx": 128,
+                "n_embd": 256,
+                "n_head": 8,
+                "n_layer": 6,
+                "n_positions": 128,
+                "vocab_size": 1024
+              },
+              "model_size": "medium",
+              "seq_len": 64,
+              "steps": 1
+            },
+            "device": 0,
+            "elapsed_seconds": 6.6155894179828465,
+            "ok": true,
+            "scenario": "transformers_inference"
+          }
+        ]
+      },
+      "case": {
+        "batch_size": 2,
+        "case_id": "inference_medium_batch2_seq64",
+        "lora_rank": 4,
+        "model_size": "medium",
+        "scenario": "inference",
+        "seq_len": 64,
+        "steps": 1
+      },
+      "effective": true,
+      "nvertake_run": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "-m",
+          "nvertake.cli",
+          "--nice",
+          "0",
+          "run",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "inference",
+          "--model-size",
+          "medium",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "64",
+          "--steps",
+          "1",
+          "--lora-rank",
+          "4",
+          "--json",
+          "--expect-priority"
+        ],
+        "elapsed_seconds": 18.151862847153097,
+        "mode": "nvertake_run",
+        "returncode": 0,
+        "stderr_tail": "2026-05-09 12:20:30,625 - nvertake - INFO - Set process nice value to 0\n2026-05-09 12:20:30,625 - nvertake - INFO - Running: /home/l1ght/anaconda3/envs/fakegpu/bin/python3 /home/l1ght/repos/nVertake/verification/verify_transformers_priority.py --scenario inference --model-size medium --batch-size 2 --seq-len 64 --steps 1 --lora-rank 4 --json --expect-priority\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": false,
+            "current_is_default_before": false,
+            "current_stream_after": 497515904,
+            "current_stream_before": 497515904,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "logits_shape": [
+                2,
+                64,
+                1024
+              ],
+              "model_class": "GPT2LMHeadModel",
+              "model_config": {
+                "n_ctx": 128,
+                "n_embd": 256,
+                "n_head": 8,
+                "n_layer": 6,
+                "n_positions": 128,
+                "vocab_size": 1024
+              },
+              "model_size": "medium",
+              "seq_len": 64,
+              "steps": 1
+            },
+            "device": 0,
+            "elapsed_seconds": 7.2225157474167645,
+            "ok": true,
+            "scenario": "transformers_inference"
+          }
+        ]
+      },
+      "reason": "baseline used default stream; nVertake used non-default priority stream"
+    },
+    {
+      "baseline": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "lora",
+          "--model-size",
+          "tiny",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "32",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "4",
+          "--json"
+        ],
+        "elapsed_seconds": 13.31955820787698,
+        "mode": "baseline",
+        "returncode": 0,
+        "stderr_tail": "/home/l1ght/anaconda3/envs/fakegpu/lib/python3.12/site-packages/peft/tuners/lora/layer.py:2504: UserWarning: fan_in_fan_out is set to False but the target module is `Conv1D`. Setting fan_in_fan_out to True.\n  warnings.warn(\n`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": true,
+            "current_is_default_before": true,
+            "current_stream_after": 0,
+            "current_stream_before": 0,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "lora_rank": 4,
+              "losses": [
+                5.549546718597412,
+                5.5610857009887695
+              ],
+              "model_class": "PeftModelForCausalLM",
+              "model_config": {
+                "n_ctx": 64,
+                "n_embd": 96,
+                "n_head": 4,
+                "n_layer": 2,
+                "n_positions": 64,
+                "vocab_size": 256
+              },
+              "model_size": "tiny",
+              "seq_len": 32,
+              "steps": 2,
+              "trainable_parameters": 8448
+            },
+            "device": 0,
+            "elapsed_seconds": 0.7591734752058983,
+            "ok": true,
+            "scenario": "peft_lora_training"
+          }
+        ]
+      },
+      "case": {
+        "batch_size": 2,
+        "case_id": "lora_tiny_rank4_batch2_seq32",
+        "lora_rank": 4,
+        "model_size": "tiny",
+        "scenario": "lora",
+        "seq_len": 32,
+        "steps": 2
+      },
+      "effective": true,
+      "nvertake_run": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "-m",
+          "nvertake.cli",
+          "--nice",
+          "0",
+          "run",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "lora",
+          "--model-size",
+          "tiny",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "32",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "4",
+          "--json",
+          "--expect-priority"
+        ],
+        "elapsed_seconds": 17.66173889208585,
+        "mode": "nvertake_run",
+        "returncode": 0,
+        "stderr_tail": "2026-05-09 12:21:01,812 - nvertake - INFO - Set process nice value to 0\n2026-05-09 12:21:01,812 - nvertake - INFO - Running: /home/l1ght/anaconda3/envs/fakegpu/bin/python3 /home/l1ght/repos/nVertake/verification/verify_transformers_priority.py --scenario lora --model-size tiny --batch-size 2 --seq-len 32 --steps 2 --lora-rank 4 --json --expect-priority\n/home/l1ght/anaconda3/envs/fakegpu/lib/python3.12/site-packages/peft/tuners/lora/layer.py:2504: UserWarning: fan_in_fan_out is set to False but the target module is `Conv1D`. Setting fan_in_fan_out to True.\n  warnings.warn(\n`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": false,
+            "current_is_default_before": false,
+            "current_stream_after": 1132784176,
+            "current_stream_before": 1132784176,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "lora_rank": 4,
+              "losses": [
+                5.549546718597412,
+                5.5610857009887695
+              ],
+              "model_class": "PeftModelForCausalLM",
+              "model_config": {
+                "n_ctx": 64,
+                "n_embd": 96,
+                "n_head": 4,
+                "n_layer": 2,
+                "n_positions": 64,
+                "vocab_size": 256
+              },
+              "model_size": "tiny",
+              "seq_len": 32,
+              "steps": 2,
+              "trainable_parameters": 8448
+            },
+            "device": 0,
+            "elapsed_seconds": 0.6323077050037682,
+            "ok": true,
+            "scenario": "peft_lora_training"
+          }
+        ]
+      },
+      "reason": "baseline used default stream; nVertake used non-default priority stream"
+    },
+    {
+      "baseline": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "lora",
+          "--model-size",
+          "small",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "48",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "8",
+          "--json"
+        ],
+        "elapsed_seconds": 13.199175890069455,
+        "mode": "baseline",
+        "returncode": 0,
+        "stderr_tail": "/home/l1ght/anaconda3/envs/fakegpu/lib/python3.12/site-packages/peft/tuners/lora/layer.py:2504: UserWarning: fan_in_fan_out is set to False but the target module is `Conv1D`. Setting fan_in_fan_out to True.\n  warnings.warn(\n`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": true,
+            "current_is_default_before": true,
+            "current_stream_after": 0,
+            "current_stream_before": 0,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "lora_rank": 8,
+              "losses": [
+                6.303722858428955,
+                6.314642906188965
+              ],
+              "model_class": "PeftModelForCausalLM",
+              "model_config": {
+                "n_ctx": 96,
+                "n_embd": 160,
+                "n_head": 5,
+                "n_layer": 4,
+                "n_positions": 96,
+                "vocab_size": 512
+              },
+              "model_size": "small",
+              "seq_len": 48,
+              "steps": 2,
+              "trainable_parameters": 56320
+            },
+            "device": 0,
+            "elapsed_seconds": 0.7385777332819998,
+            "ok": true,
+            "scenario": "peft_lora_training"
+          }
+        ]
+      },
+      "case": {
+        "batch_size": 2,
+        "case_id": "lora_small_rank8_batch2_seq48",
+        "lora_rank": 8,
+        "model_size": "small",
+        "scenario": "lora",
+        "seq_len": 48,
+        "steps": 2
+      },
+      "effective": true,
+      "nvertake_run": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "-m",
+          "nvertake.cli",
+          "--nice",
+          "0",
+          "run",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "lora",
+          "--model-size",
+          "small",
+          "--batch-size",
+          "2",
+          "--seq-len",
+          "48",
+          "--steps",
+          "2",
+          "--lora-rank",
+          "8",
+          "--json",
+          "--expect-priority"
+        ],
+        "elapsed_seconds": 19.585198244079947,
+        "mode": "nvertake_run",
+        "returncode": 0,
+        "stderr_tail": "2026-05-09 12:21:33,577 - nvertake - INFO - Set process nice value to 0\n2026-05-09 12:21:33,577 - nvertake - INFO - Running: /home/l1ght/anaconda3/envs/fakegpu/bin/python3 /home/l1ght/repos/nVertake/verification/verify_transformers_priority.py --scenario lora --model-size small --batch-size 2 --seq-len 48 --steps 2 --lora-rank 8 --json --expect-priority\n/home/l1ght/anaconda3/envs/fakegpu/lib/python3.12/site-packages/peft/tuners/lora/layer.py:2504: UserWarning: fan_in_fan_out is set to False but the target module is `Conv1D`. Setting fan_in_fan_out to True.\n  warnings.warn(\n`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": false,
+            "current_is_default_before": false,
+            "current_stream_after": 386860672,
+            "current_stream_before": 386860672,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 2,
+              "lora_rank": 8,
+              "losses": [
+                6.303722858428955,
+                6.314642906188965
+              ],
+              "model_class": "PeftModelForCausalLM",
+              "model_config": {
+                "n_ctx": 96,
+                "n_embd": 160,
+                "n_head": 5,
+                "n_layer": 4,
+                "n_positions": 96,
+                "vocab_size": 512
+              },
+              "model_size": "small",
+              "seq_len": 48,
+              "steps": 2,
+              "trainable_parameters": 56320
+            },
+            "device": 0,
+            "elapsed_seconds": 0.8709571259096265,
+            "ok": true,
+            "scenario": "peft_lora_training"
+          }
+        ]
+      },
+      "reason": "baseline used default stream; nVertake used non-default priority stream"
+    },
+    {
+      "baseline": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "lora",
+          "--model-size",
+          "medium",
+          "--batch-size",
+          "1",
+          "--seq-len",
+          "64",
+          "--steps",
+          "1",
+          "--lora-rank",
+          "4",
+          "--json"
+        ],
+        "elapsed_seconds": 14.39682026207447,
+        "mode": "baseline",
+        "returncode": 0,
+        "stderr_tail": "/home/l1ght/anaconda3/envs/fakegpu/lib/python3.12/site-packages/peft/tuners/lora/layer.py:2504: UserWarning: fan_in_fan_out is set to False but the target module is `Conv1D`. Setting fan_in_fan_out to True.\n  warnings.warn(\n`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": true,
+            "current_is_default_before": true,
+            "current_stream_after": 0,
+            "current_stream_before": 0,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 1,
+              "lora_rank": 4,
+              "losses": [
+                6.914498329162598
+              ],
+              "model_class": "PeftModelForCausalLM",
+              "model_config": {
+                "n_ctx": 128,
+                "n_embd": 256,
+                "n_head": 8,
+                "n_layer": 6,
+                "n_positions": 128,
+                "vocab_size": 1024
+              },
+              "model_size": "medium",
+              "seq_len": 64,
+              "steps": 1,
+              "trainable_parameters": 67584
+            },
+            "device": 0,
+            "elapsed_seconds": 0.8794376431033015,
+            "ok": true,
+            "scenario": "peft_lora_training"
+          }
+        ]
+      },
+      "case": {
+        "batch_size": 1,
+        "case_id": "lora_medium_rank4_batch1_seq64",
+        "lora_rank": 4,
+        "model_size": "medium",
+        "scenario": "lora",
+        "seq_len": 64,
+        "steps": 1
+      },
+      "effective": true,
+      "nvertake_run": {
+        "command": [
+          "/home/l1ght/anaconda3/envs/fakegpu/bin/python3",
+          "-m",
+          "nvertake.cli",
+          "--nice",
+          "0",
+          "run",
+          "/home/l1ght/repos/nVertake/verification/verify_transformers_priority.py",
+          "--scenario",
+          "lora",
+          "--model-size",
+          "medium",
+          "--batch-size",
+          "1",
+          "--seq-len",
+          "64",
+          "--steps",
+          "1",
+          "--lora-rank",
+          "4",
+          "--json",
+          "--expect-priority"
+        ],
+        "elapsed_seconds": 17.33545804116875,
+        "mode": "nvertake_run",
+        "returncode": 0,
+        "stderr_tail": "2026-05-09 12:22:06,566 - nvertake - INFO - Set process nice value to 0\n2026-05-09 12:22:06,566 - nvertake - INFO - Running: /home/l1ght/anaconda3/envs/fakegpu/bin/python3 /home/l1ght/repos/nVertake/verification/verify_transformers_priority.py --scenario lora --model-size medium --batch-size 1 --seq-len 64 --steps 1 --lora-rank 4 --json --expect-priority\n/home/l1ght/anaconda3/envs/fakegpu/lib/python3.12/site-packages/peft/tuners/lora/layer.py:2504: UserWarning: fan_in_fan_out is set to False but the target module is `Conv1D`. Setting fan_in_fan_out to True.\n  warnings.warn(\n`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\n",
+        "stdout_json": [
+          {
+            "cuda_available": true,
+            "current_is_default_after": false,
+            "current_is_default_before": false,
+            "current_stream_after": 287996368,
+            "current_stream_before": 287996368,
+            "default_stream": 0,
+            "details": {
+              "batch_size": 1,
+              "lora_rank": 4,
+              "losses": [
+                6.914498329162598
+              ],
+              "model_class": "PeftModelForCausalLM",
+              "model_config": {
+                "n_ctx": 128,
+                "n_embd": 256,
+                "n_head": 8,
+                "n_layer": 6,
+                "n_positions": 128,
+                "vocab_size": 1024
+              },
+              "model_size": "medium",
+              "seq_len": 64,
+              "steps": 1,
+              "trainable_parameters": 67584
+            },
+            "device": 0,
+            "elapsed_seconds": 0.7135546798817813,
+            "ok": true,
+            "scenario": "peft_lora_training"
+          }
+        ]
+      },
+      "reason": "baseline used default stream; nVertake used non-default priority stream"
+    }
+  ],
+  "started_at": "2026-05-09T12:19:10+0800",
+  "total_cases": 6
+}

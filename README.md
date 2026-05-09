@@ -149,6 +149,8 @@ repository does not depend on FakeGPU for its main test flow.
   `nvertake run verification/verify_transformers_priority.py --expect-priority`
 - Sustained utilization contention experiment:
   `python3 verification/run_contention_util_experiment.py --output verification/results/contention_util_<date>.json`
+- Own-process-only contention variants:
+  `python3 verification/run_own_process_variants_experiment.py --output verification/results/own_process_variants_<date>.json`
 
 See `test/README.md` for the test matrix, prerequisites, and how to interpret
 the generated artifacts.

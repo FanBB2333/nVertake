@@ -14,7 +14,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, TextIO
+from typing import Any, Dict, List, Optional, TextIO, Tuple
 
 import torch
 
@@ -49,13 +49,20 @@ def _write_jsonl(handle: TextIO, payload: Dict[str, Any]) -> None:
     handle.flush()
 
 
-def _stream_payload(device: int, stream: torch.cuda.Stream, mode: str) -> Dict[str, Any]:
+def _stream_payload(
+    device: int,
+    streams: List[torch.cuda.Stream],
+    mode: str,
+    launch_mode: str,
+) -> Dict[str, Any]:
     default = torch.cuda.default_stream(device)
     return {
         "stream_mode": mode,
-        "stream_cuda_ptr": int(stream.cuda_stream),
+        "launch_mode": launch_mode,
+        "num_streams": len(streams),
+        "stream_cuda_ptrs": [int(stream.cuda_stream) for stream in streams],
         "default_stream_cuda_ptr": int(default.cuda_stream),
-        "stream_is_default": bool(stream.cuda_stream == default.cuda_stream),
+        "stream_is_default": any(stream.cuda_stream == default.cuda_stream for stream in streams),
     }
 
 
@@ -73,6 +80,71 @@ def _make_stream(device: int, mode: str) -> torch.cuda.Stream:
     raise ValueError(f"Unsupported stream mode: {mode}")
 
 
+def _make_streams(device: int, mode: str, num_streams: int) -> List[torch.cuda.Stream]:
+    if num_streams <= 0:
+        raise ValueError("num_streams must be > 0")
+    streams = [_make_stream(device=device, mode=mode)]
+    if mode == "nvertake":
+        streams.extend(torch.cuda.Stream(device=device, priority=-1) for _ in range(num_streams - 1))
+    else:
+        streams.extend(_make_stream(device=device, mode=mode) for _ in range(num_streams - 1))
+    return streams
+
+
+def _allocate_workloads(
+    *,
+    device: int,
+    matrix_size: int,
+    dtype: torch.dtype,
+    count: int,
+) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+    workloads: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
+    with torch.cuda.device(device):
+        for _ in range(count):
+            left = torch.randn((matrix_size, matrix_size), device=f"cuda:{device}", dtype=dtype)
+            right = torch.randn((matrix_size, matrix_size), device=f"cuda:{device}", dtype=dtype)
+            out = torch.empty((matrix_size, matrix_size), device=f"cuda:{device}", dtype=dtype)
+            workloads.append((left, right, out))
+    return workloads
+
+
+def _run_eager_batch(
+    *,
+    streams: List[torch.cuda.Stream],
+    workloads: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+    batch_iters: int,
+) -> int:
+    for stream, (left, right, out) in zip(streams, workloads):
+        with torch.cuda.stream(stream):
+            for _ in range(batch_iters):
+                torch.mm(left, right, out=out)
+    for stream in streams:
+        stream.synchronize()
+    return batch_iters * len(streams)
+
+
+def _make_cuda_graph_batch(
+    *,
+    device: int,
+    stream: torch.cuda.Stream,
+    workload: Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    batch_iters: int,
+) -> torch.cuda.CUDAGraph:
+    left, right, out = workload
+    with torch.cuda.stream(stream):
+        for _ in range(batch_iters):
+            torch.mm(left, right, out=out)
+    stream.synchronize()
+    torch.cuda.synchronize(device)
+
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=stream):
+        for _ in range(batch_iters):
+            torch.mm(left, right, out=out)
+    torch.cuda.synchronize(device)
+    return graph
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--role", required=True, choices=("resident", "invader"))
@@ -84,6 +156,8 @@ def main() -> int:
     parser.add_argument("--report-interval", type=float, default=1.0)
     parser.add_argument("--warmup-seconds", type=float, default=2.0)
     parser.add_argument("--stream-mode", choices=("priority0", "nvertake"), default="priority0")
+    parser.add_argument("--num-streams", type=int, default=1)
+    parser.add_argument("--launch-mode", choices=("eager", "cuda_graph"), default="eager")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -96,6 +170,10 @@ def main() -> int:
         parser.error("--report-interval must be > 0")
     if args.duration_seconds < 0:
         parser.error("--duration-seconds must be >= 0")
+    if args.num_streams <= 0:
+        parser.error("--num-streams must be > 0")
+    if args.launch_mode == "cuda_graph" and args.num_streams != 1:
+        parser.error("--launch-mode cuda_graph requires --num-streams 1")
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -111,13 +189,27 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with output_path.open("w", encoding="utf-8") as handle:
-        stream = _make_stream(device=device, mode=str(args.stream_mode))
-        stream_info = _stream_payload(device=device, stream=stream, mode=str(args.stream_mode))
-
-        with torch.cuda.device(device):
-            left = torch.randn((matrix_size, matrix_size), device=f"cuda:{device}", dtype=dtype)
-            right = torch.randn((matrix_size, matrix_size), device=f"cuda:{device}", dtype=dtype)
-            out = torch.empty((matrix_size, matrix_size), device=f"cuda:{device}", dtype=dtype)
+        streams = _make_streams(device=device, mode=str(args.stream_mode), num_streams=int(args.num_streams))
+        stream_info = _stream_payload(
+            device=device,
+            streams=streams,
+            mode=str(args.stream_mode),
+            launch_mode=str(args.launch_mode),
+        )
+        workloads = _allocate_workloads(
+            device=device,
+            matrix_size=matrix_size,
+            dtype=dtype,
+            count=len(streams),
+        )
+        graph = None
+        if args.launch_mode == "cuda_graph":
+            graph = _make_cuda_graph_batch(
+                device=device,
+                stream=streams[0],
+                workload=workloads[0],
+                batch_iters=int(args.batch_iters),
+            )
 
         started = time.time()
         _write_jsonl(
@@ -132,6 +224,7 @@ def main() -> int:
                 "matrix_size": matrix_size,
                 "dtype": str(dtype).replace("torch.", ""),
                 "batch_iters": int(args.batch_iters),
+                "effective_batch_iters": int(args.batch_iters) * len(streams),
                 "report_interval": float(args.report_interval),
                 **stream_info,
             },
@@ -139,10 +232,15 @@ def main() -> int:
 
         warmup_end = time.time() + float(args.warmup_seconds)
         while not _STOP and time.time() < warmup_end:
-            with torch.cuda.stream(stream):
-                for _ in range(int(args.batch_iters)):
-                    torch.mm(left, right, out=out)
-            stream.synchronize()
+            if graph is not None:
+                graph.replay()
+                streams[0].synchronize()
+            else:
+                _run_eager_batch(
+                    streams=streams,
+                    workloads=workloads,
+                    batch_iters=int(args.batch_iters),
+                )
 
         torch.cuda.synchronize(device)
         ready = time.time()
@@ -155,11 +253,17 @@ def main() -> int:
         flops_per_iter = 2.0 * (matrix_size**3)
 
         while not _STOP and (end_time is None or time.time() < end_time):
-            with torch.cuda.stream(stream):
-                for _ in range(int(args.batch_iters)):
-                    torch.mm(left, right, out=out)
-            stream.synchronize()
-            total_iters += int(args.batch_iters)
+            if graph is not None:
+                graph.replay()
+                streams[0].synchronize()
+                completed_iters = int(args.batch_iters)
+            else:
+                completed_iters = _run_eager_batch(
+                    streams=streams,
+                    workloads=workloads,
+                    batch_iters=int(args.batch_iters),
+                )
+            total_iters += completed_iters
 
             now = time.time()
             if now - last_report_t >= float(args.report_interval):

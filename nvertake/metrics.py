@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any, Dict, Optional
 
 
 _METRICS_ENV = "NVERTAKE_METRICS_PATH"
+_MIB = 1024 * 1024
 
 
 def _utc_now() -> str:
@@ -26,6 +28,26 @@ def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
         encoding="utf-8",
     )
     os.replace(str(temporary), str(path))
+
+
+def _pytorch_memory_snapshot() -> Dict[str, Any]:
+    """Read allocator memory only when the workload already initialized PyTorch CUDA."""
+
+    torch = sys.modules.get("torch")
+    cuda = getattr(torch, "cuda", None) if torch is not None else None
+    try:
+        if cuda is None or not cuda.is_initialized():
+            return {}
+        allocated = int(cuda.memory_allocated(0) // _MIB)
+        reserved = int(cuda.memory_reserved(0) // _MIB)
+    except (AttributeError, RuntimeError):
+        return {}
+    return {
+        "pytorch_allocated_memory_mib": allocated,
+        "pytorch_reserved_memory_mib": reserved,
+        "gpu_memory_mib": max(allocated, reserved),
+        "gpu_memory_source": "pytorch_allocator",
+    }
 
 
 def report_throughput(
@@ -58,6 +80,7 @@ def report_throughput(
         "updated_at": _utc_now(),
         "monotonic_time": time.monotonic(),
     }
+    payload.update(_pytorch_memory_snapshot())
     if metadata:
         payload["metadata"] = metadata
     _atomic_write_json(Path(raw_path), payload)

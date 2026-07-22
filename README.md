@@ -100,6 +100,9 @@ The monitor reports the job name, physical GPU, PID, assigned SM count,
 framebuffer memory, latest workload throughput, and state. Add `device: 0` or
 `device: 1` to each job to launch groups on both GPUs at the same time; see
 [`examples/jobs-multi-gpu.yaml`](examples/jobs-multi-gpu.yaml).
+When a WSL driver does not expose per-process framebuffer memory through
+`nvidia-smi`, a job calling `report_throughput()` supplies PyTorch allocator
+memory as a labeled fallback.
 
 Memory caps use `torch.cuda.set_per_process_memory_fraction` after the Green
 Context is bound and before the user script runs. Set `memory_share` on every

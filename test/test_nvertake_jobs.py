@@ -208,6 +208,22 @@ class TestMemoryAndMetrics(unittest.TestCase):
         self.assertEqual(metric["throughput"], 12.5)
         self.assertEqual(metric["unit"], "samples/s")
 
+    def test_throughput_metric_includes_pytorch_memory_fallback(self):
+        fake_cuda = MagicMock()
+        fake_cuda.is_initialized.return_value = True
+        fake_cuda.memory_allocated.return_value = 8 * 1024 * 1024
+        fake_cuda.memory_reserved.return_value = 16 * 1024 * 1024
+        fake_torch = SimpleNamespace(cuda=fake_cuda)
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "metric.json"
+            with patch.dict(sys.modules, {"torch": fake_torch}), patch.dict(
+                os.environ, {"NVERTAKE_METRICS_PATH": str(path)}, clear=False
+            ):
+                report_throughput(1.0)
+            metric = read_throughput_metric(path)
+        self.assertEqual(metric["gpu_memory_mib"], 16)
+        self.assertEqual(metric["gpu_memory_source"], "pytorch_allocator")
+
 
 class TestCalibration(unittest.TestCase):
     def test_adjusts_toward_target_throughput_ratio(self):

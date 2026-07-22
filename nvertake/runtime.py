@@ -150,6 +150,7 @@ def enrich_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
         pid = job.get("pid")
         if isinstance(pid, int) and pid in memory:
             job["gpu_memory_mib"] = memory[pid]
+            job["gpu_memory_source"] = "nvidia-smi"
             peak = int(job.get("peak_gpu_memory_mib") or 0)
             job["peak_gpu_memory_mib"] = max(peak, memory[pid])
 
@@ -160,6 +161,17 @@ def enrich_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
                 job["throughput"] = metric["throughput"]
                 job["throughput_unit"] = metric["unit"]
                 job["throughput_updated_at"] = metric.get("updated_at")
+                if not (isinstance(pid, int) and pid in memory):
+                    fallback_memory = metric.get("gpu_memory_mib")
+                    if isinstance(fallback_memory, (int, float)):
+                        job["gpu_memory_mib"] = int(fallback_memory)
+                        job["gpu_memory_source"] = metric.get(
+                            "gpu_memory_source", "cooperative_metric"
+                        )
+                        peak = int(job.get("peak_gpu_memory_mib") or 0)
+                        job["peak_gpu_memory_mib"] = max(
+                            peak, int(fallback_memory)
+                        )
 
         if (
             job.get("status") in ("starting", "running")
@@ -256,6 +268,7 @@ class RunReport:
                 if isinstance(pid, int) and pid in memory:
                     used = memory[pid]
                     job["gpu_memory_mib"] = used
+                    job["gpu_memory_source"] = "nvidia-smi"
                     job["peak_gpu_memory_mib"] = max(
                         int(job.get("peak_gpu_memory_mib") or 0), used
                     )
@@ -267,6 +280,17 @@ class RunReport:
                         job["throughput"] = metric["throughput"]
                         job["throughput_unit"] = metric["unit"]
                         job["throughput_updated_at"] = metric.get("updated_at")
+                        if not (isinstance(pid, int) and pid in memory):
+                            fallback_memory = metric.get("gpu_memory_mib")
+                            if isinstance(fallback_memory, (int, float)):
+                                used = int(fallback_memory)
+                                job["gpu_memory_mib"] = used
+                                job["gpu_memory_source"] = metric.get(
+                                    "gpu_memory_source", "cooperative_metric"
+                                )
+                                job["peak_gpu_memory_mib"] = max(
+                                    int(job.get("peak_gpu_memory_mib") or 0), used
+                                )
                         changed = True
             if changed:
                 self._write_locked()

@@ -3,21 +3,32 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from nvertake.cli import create_parser, main
 from nvertake.green_context import (
     GreenContextError,
     GreenContextExecutor,
+    GreenProcessContext,
     GreenRunResult,
     _DeviceResource,
     _requested_partition_sm_count,
     current_green_context_lane,
+)
+from nvertake.green_process import (
+    GreenProcessLaunchError,
+    _child_environment,
+    _execute_python_script,
+    _validate_ready_metadata,
+    run_green_process_scripts,
 )
 
 
@@ -35,9 +46,15 @@ class _FakeHandle:
 
 
 class _FakeDriver:
-    def __init__(self, total_sms=110, compute_capability_major=12):
+    def __init__(
+        self,
+        total_sms=110,
+        compute_capability_major=12,
+        fine_group_sm_count=2,
+    ):
         self.total_sms = total_sms
         self.major = compute_capability_major
+        self.fine_group_sm_count = fine_group_sm_count
         self.requested_sm_count = None
         self.created = []
         self.destroyed = []
@@ -66,6 +83,31 @@ class _FakeDriver:
             _FakeResource(requested_sm_count),
             _FakeResource(resource.sm_count - requested_sm_count),
         )
+
+    def split_sm_resources(
+        self, resource, *, group_count, requested_sm_count, flags=0
+    ):
+        actual_sm_count = (
+            self.fine_group_sm_count
+            if flags and self.major >= 7 and requested_sm_count < 2
+            else requested_sm_count
+        )
+        actual_group_count = min(group_count, resource.sm_count // actual_sm_count)
+        groups = tuple(
+            _FakeResource(actual_sm_count) for _ in range(actual_group_count)
+        )
+        remainder = _FakeResource(
+            resource.sm_count - actual_group_count * actual_sm_count
+        )
+        return groups, remainder
+
+    def sm_resource_group_count(self, resource, *, requested_sm_count, flags=0):
+        actual_sm_count = (
+            self.fine_group_sm_count
+            if flags and self.major >= 7 and requested_sm_count < 2
+            else requested_sm_count
+        )
+        return resource.sm_count // actual_sm_count
 
     def create_green_context(self, device, resources):
         index = len(self.created)
@@ -164,6 +206,126 @@ class TestGreenContextExecution(unittest.TestCase):
         self.assertAlmostEqual(payload["lanes"][1]["actual_sm_share"], 64 / 84)
 
 
+class TestGreenProcessContext(unittest.TestCase):
+    def test_three_process_partition_uses_all_sms(self):
+        driver = _FakeDriver(total_sms=110, compute_capability_major=12)
+        with GreenProcessContext(
+            shares=(20, 30, 50), lane_index=2, _driver=driver
+        ) as context:
+            self.assertEqual([lane.sm_count for lane in context.lanes], [22, 34, 54])
+            self.assertEqual(context.lane.sm_count, 54)
+            with context.bind() as lane:
+                self.assertEqual(lane.index, 2)
+                self.assertEqual(driver.current_context(), 1000)
+                self.assertEqual(current_green_context_lane(), lane)
+
+        self.assertEqual(driver.destroyed, [1])
+
+    def test_four_equal_processes_report_architecture_rounding(self):
+        driver = _FakeDriver(total_sms=110, compute_capability_major=12)
+        with GreenProcessContext(
+            shares=(1, 1, 1, 1), lane_index=0, _driver=driver
+        ) as context:
+            self.assertEqual(
+                [lane.sm_count for lane in context.lanes], [28, 28, 28, 26]
+            )
+
+    def test_process_plan_queries_driver_fine_group_count(self):
+        driver = _FakeDriver(
+            total_sms=15,
+            compute_capability_major=12,
+            fine_group_sm_count=1,
+        )
+        with GreenProcessContext(
+            shares=(20, 30, 50), lane_index=1, _driver=driver
+        ) as context:
+            self.assertEqual([lane.sm_count for lane in context.lanes], [3, 5, 7])
+
+    def test_process_count_is_limited_by_minimum_partition_size(self):
+        driver = _FakeDriver(total_sms=110, compute_capability_major=12)
+        with self.assertRaisesRegex(GreenContextError, "cannot create 56"):
+            GreenProcessContext(shares=(1,) * 56, lane_index=0, _driver=driver)
+
+
+class TestGreenProcessLauncherHelpers(unittest.TestCase):
+    def test_child_environment_selects_device_and_clears_inherited_limits(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE": "25",
+                "CUDA_MPS_PIPE_DIRECTORY": "/tmp/inherited-mps",
+                "NVERTAKE_AUTO_PRIORITY": "1",
+            },
+            clear=False,
+        ):
+            env = _child_environment(3)
+        self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "3")
+        self.assertEqual(env["NVERTAKE_GREEN_PROCESS"], "1")
+        self.assertNotIn("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", env)
+        self.assertNotIn("CUDA_MPS_PIPE_DIRECTORY", env)
+        self.assertNotIn("NVERTAKE_AUTO_PRIORITY", env)
+
+    def test_ready_metadata_requires_identical_partition_maps(self):
+        metadata = (
+            {
+                "lane_index": 0,
+                "pid": 100,
+                "sm_count": 24,
+                "partition_sm_counts": [24, 32, 54],
+            },
+            {
+                "lane_index": 1,
+                "pid": 101,
+                "sm_count": 32,
+                "partition_sm_counts": [24, 32, 54],
+            },
+            {
+                "lane_index": 2,
+                "pid": 102,
+                "sm_count": 55,
+                "partition_sm_counts": [24, 31, 55],
+            },
+        )
+        with self.assertRaisesRegex(GreenProcessLaunchError, "different"):
+            _validate_ready_metadata(metadata, 3)
+
+    def test_python_script_receives_its_own_arguments(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = os.path.abspath(root)
+            script = os.path.join(root_path, "worker.py")
+            output = os.path.join(root_path, "argv.json")
+            with open(script, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "import json, sys\nfrom pathlib import Path\n"
+                    f"Path({output!r}).write_text(json.dumps(sys.argv))\n"
+                )
+
+            self.assertEqual(
+                _execute_python_script(Path(script), ("--value", "42")),
+                0,
+            )
+            with open(output, encoding="utf-8") as handle:
+                argv = json.load(handle)
+            self.assertEqual(argv, [script, "--value", "42"])
+
+    def test_script_argument_lists_must_match_process_count(self):
+        with tempfile.TemporaryDirectory() as root:
+            script = Path(root) / "worker.py"
+            script.write_text("pass\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "one argument list"):
+                run_green_process_scripts(
+                    [str(script), str(script)],
+                    shares=(50, 50),
+                    script_args=(),
+                )
+            with self.assertRaisesRegex(TypeError, "argument must be a string"):
+                run_green_process_scripts(
+                    [str(script), str(script)],
+                    shares=(50, 50),
+                    script_args=("ab", "cd"),
+                )
+
+
 class TestGreenContextCLI(unittest.TestCase):
     def test_parser_accepts_two_green_tasks(self):
         args = create_parser().parse_args(
@@ -208,6 +370,45 @@ class TestGreenContextCLI(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())["results"], [1, 2])
         self.assertEqual(run.call_args.kwargs["shares"], (25.0, 75.0))
         self.assertEqual(run.call_args.kwargs["task_kwargs"][1]["seconds"], 2)
+
+    def test_parser_accepts_three_green_process_scripts(self):
+        args = create_parser().parse_args(
+            [
+                "green-procs",
+                "--shares",
+                "20,30,50",
+                "first.py",
+                "second.py",
+                "third.py",
+            ]
+        )
+        self.assertEqual(args.command, "green-procs")
+        self.assertEqual(args.scripts, ["first.py", "second.py", "third.py"])
+
+    def test_main_launches_three_green_process_scripts(self):
+        with patch(
+            "nvertake.green_process.run_green_process_scripts", return_value=0
+        ) as launch:
+            return_code = main(
+                [
+                    "green-procs",
+                    "--shares",
+                    "20,30,50",
+                    "--script-args",
+                    '["--rank", "0"]',
+                    "--script-args",
+                    '["--rank", "1"]',
+                    "--script-args",
+                    '["--rank", "2"]',
+                    "first.py",
+                    "second.py",
+                    "third.py",
+                ]
+            )
+
+        self.assertEqual(return_code, 0)
+        self.assertEqual(launch.call_args.kwargs["shares"], (20.0, 30.0, 50.0))
+        self.assertEqual(launch.call_args.kwargs["script_args"][2], ("--rank", "2"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,92 @@
+{
+  "actual_sm_counts": [
+    8,
+    16,
+    26,
+    34
+  ],
+  "combined_tflops_per_second": 16.281542066718867,
+  "configuration": {
+    "batch_iters": 4,
+    "duration_seconds": 3.0,
+    "matrix_size": 4096,
+    "warmup_iters": 4
+  },
+  "device": 0,
+  "host": "DESKTOP-GEM12",
+  "launcher_stderr": "nVertake Green processes ready: lane 0 (pid 3374805)=8 SM (10.00% requested), lane 1 (pid 3374806)=16 SM (20.00% requested), lane 2 (pid 3374807)=26 SM (30.00% requested), lane 3 (pid 3374808)=34 SM (40.00% requested)",
+  "platform": "Linux-6.18.33.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "requested_shares": [
+    10.0,
+    20.0,
+    30.0,
+    40.0
+  ],
+  "timestamp_utc": "2026-07-22T11:09:41.761401+00:00",
+  "workers": [
+    {
+      "checksum": -115.3125,
+      "device_name": "NVIDIA GeForce RTX 3090 Ti",
+      "elapsed_seconds": 3.0131818809895776,
+      "iterations": 40,
+      "lane": 0,
+      "pid": 3374805,
+      "requested_share": 10.0,
+      "role": "lane-0",
+      "sm_count": 8,
+      "tflops_per_second": 1.8245025876348735,
+      "throughput_share": 0.11205956906037438,
+      "torch_cuda": "13.0",
+      "torch_version": "2.12.1+cu130",
+      "total_sm_count": 84
+    },
+    {
+      "checksum": -27.671875,
+      "device_name": "NVIDIA GeForce RTX 3090 Ti",
+      "elapsed_seconds": 3.033234862028621,
+      "iterations": 72,
+      "lane": 1,
+      "pid": 3374806,
+      "requested_share": 20.0,
+      "role": "lane-1",
+      "sm_count": 16,
+      "tflops_per_second": 3.262393154536619,
+      "throughput_share": 0.20037372020217198,
+      "torch_cuda": "13.0",
+      "torch_version": "2.12.1+cu130",
+      "total_sm_count": 84
+    },
+    {
+      "checksum": 77.75,
+      "device_name": "NVIDIA GeForce RTX 3090 Ti",
+      "elapsed_seconds": 3.0388437540386803,
+      "iterations": 112,
+      "lane": 2,
+      "pid": 3374807,
+      "requested_share": 30.0,
+      "role": "lane-2",
+      "sm_count": 26,
+      "tflops_per_second": 5.065467011394119,
+      "throughput_share": 0.3111171528247592,
+      "torch_cuda": "13.0",
+      "torch_version": "2.12.1+cu130",
+      "total_sm_count": 84
+    },
+    {
+      "checksum": -99.5625,
+      "device_name": "NVIDIA GeForce RTX 3090 Ti",
+      "elapsed_seconds": 3.0496248709969223,
+      "iterations": 136,
+      "lane": 3,
+      "pid": 3374808,
+      "requested_share": 40.0,
+      "role": "lane-3",
+      "sm_count": 34,
+      "tflops_per_second": 6.129179313153255,
+      "throughput_share": 0.37644955791269447,
+      "torch_cuda": "13.0",
+      "torch_version": "2.12.1+cu130",
+      "total_sm_count": 84
+    }
+  ]
+}

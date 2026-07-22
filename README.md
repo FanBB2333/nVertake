@@ -7,6 +7,7 @@ resource-contention experiments.
 ## Features
 
 - **PyTorch Priority Hook**: Run common PyTorch training and inference workloads on a high-priority CUDA stream with little or no source change
+- **Multi-Process SM Shares**: Launch two, three, or more Python files together with a requested SM weight for each process
 - **Driver-Level SM Partitioning**: Run two cooperating in-process tasks in separate CUDA Green Contexts, including on WSL
 - **Weighted GPU Sharing**: Give cooperating CUDA processes different execution-resource ceilings through NVIDIA MPS
 - **Memory Reservation**: Reserve GPU memory to prevent other processes from claiming it
@@ -47,7 +48,55 @@ streams explicitly:
 nvertake --no-torch-priority run train.py
 ```
 
-### Partition SMs Between Two Tasks Without MPS
+### Launch Multiple Python Processes with SM Shares
+
+Launch every participating Python file in one command and give each process a
+relative SM weight:
+
+```bash
+nvertake --device 0 green-procs \
+  --shares 20,30,50 \
+  --script-args '["--epochs", "5"]' \
+  --script-args '["--batch-size", "64"]' \
+  --script-args '[]' \
+  first.py second.py third.py
+```
+
+The order of `--shares`, `--script-args`, and Python files is the same. Omit
+`--script-args` entirely when none of the files needs arguments. The values are
+relative weights, so `1,2,3` and `20,40,60` request the same split. There is no
+fixed process count in nVertake; the practical limit is the number of resource
+groups that the GPU driver can produce.
+
+The launcher starts real OS processes, creates one Green Context in each, waits
+until every context is ready, and then releases all files at the same time. Each
+child sees the selected physical GPU as logical CUDA device `0`. The startup
+message reports the child PIDs and exact driver-selected SM counts. If one child
+fails, nVertake terminates the remaining children and returns a nonzero status.
+
+Important constraints:
+
+- This allocates SM sets, not exact wall-clock percentages. Throughput still
+  depends on the kernels, memory bandwidth, and other GPU resources.
+- All cooperating processes must be launched by the same `green-procs` command.
+  It does not limit unrelated CUDA processes already running on the GPU.
+- CUDA must not already be initialized before nVertake binds the context. Normal
+  top-level initialization inside each launched file is safe. Do not make that
+  file spawn additional CUDA worker processes; those descendants do not receive
+  their own partition.
+- Three or more lanes use the CUDA
+  `CU_DEV_SM_RESOURCE_SPLIT_IGNORE_SM_COSCHEDULING` mode for fine-grained
+  allocation. This trades SM co-scheduling guarantees and advanced features
+  such as large thread-block clusters for smaller partitions.
+- Multi-process Green Context coordination is experimental. It worked on both
+  tested machines, but NVIDIA primarily documents Green Context partitioning
+  within one process; validate the real workload and driver before relying on it.
+
+The corresponding Python API is `run_green_process_scripts(...)`.
+See NVIDIA's [Green Context programming guide](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/green-contexts.html)
+for the underlying CUDA mechanism and its architecture-specific constraints.
+
+### Partition SMs Between Two In-Process Tasks
 
 CUDA Green Contexts are the strongest option in this project when both tasks
 can run as Python callables in one process. The CUDA driver assigns each task a
@@ -226,6 +275,7 @@ Options:
 Commands:
   run SCRIPT [ARGS...]  Run a Python script with elevated priority
   exec COMMAND [ARGS...] Run any command with elevated priority environment
+  green-procs           Run Python files as weighted Green Context processes
   green-run             Run two callables in separate Green Context SM partitions
   info                  Show GPU information
   mps ACTION            Start, inspect, or stop the per-device MPS daemon
@@ -267,12 +317,12 @@ priority hook remains available without MPS.
 ### CUDA Green Context SM Partitioning
 
 1. nVertake asks the CUDA Driver API for the device's SM resource.
-2. It splits that resource according to the two requested weights, rounded to
-   the architecture's supported partition granularity.
-3. It creates one Green Context per resource partition and binds each context
-   to its own Python worker thread.
-4. Both callables run concurrently, after which nVertake synchronizes and
-   destroys the contexts.
+2. It splits that resource according to the requested weights, rounded to the
+   driver-reported partition granularity.
+3. `green-run` binds two contexts to Python worker threads in one process;
+   `green-procs` binds one context in each launched Python process.
+4. The tasks run concurrently, after which nVertake synchronizes and destroys
+   the contexts.
 
 This is a supported CUDA Driver API mechanism, not a driver bypass. It requires
 a driver exposing the CUDA 12.4 Green Context API and a supported GPU. It works
@@ -311,8 +361,12 @@ repository does not depend on FakeGPU for its main test flow.
   `bash test/run_tests_summary.sh mps-share --device 0 --output verification/results/mps_share_<date>.json`
 - Green Context 50/50 vs 25/75 SM experiment:
   `bash test/run_tests_summary.sh green-share --device 0 --output verification/results/green_share_<date>.json`
+- Multi-process Green Context experiment:
+  `bash test/run_tests_summary.sh green-procs-share --device 0 --shares 20,30,50 --output verification/results/green_process_share_<date>.json`
 - 2026-07-22 Green Context results:
   `verification/results/green_context_share_20260722_{406,gem12_wsl}.json`
+- 2026-07-22 multi-process results:
+  `verification/results/green_process_share{,_four}_20260722_{406,gem12_wsl}.json`
 - Plot-ready result summary:
   `verification/results/resource_contention_summary_20260509.json`
 
@@ -320,6 +374,23 @@ See `test/README.md` for the test matrix, prerequisites, and how to interpret
 the generated artifacts.
 
 ## Experimental Results
+
+### Multiple Green Context processes (2026-07-22)
+
+The public `green-procs` command launched separate Python PIDs running saturated
+FP16 4096x4096 GEMM loops. The measured throughput distribution followed the
+allocated SM distribution on native Linux and WSL:
+
+| Host / GPU | Processes | Requested weights | Actual SM counts | Throughput shares |
+|---|---:|---:|---:|---:|
+| 406 / RTX PRO 5000 Blackwell | 3 | 20/30/50 | 22/34/54 | 22.25%/32.79%/44.96% |
+| gem12 WSL / RTX 3090 Ti | 3 | 20/30/50 | 16/26/42 | 21.48%/31.81%/46.71% |
+| 406 / RTX PRO 5000 Blackwell | 4 | 10/20/30/40 | 12/22/32/44 | 12.37%/19.39%/29.21%/39.02% |
+| gem12 WSL / RTX 3090 Ti | 4 | 10/20/30/40 | 8/16/26/34 | 11.21%/20.04%/31.11%/37.64% |
+
+The SM counts sum to the full device in every case. Small differences from the
+requested weights come from the driver's partition granularity; throughput is
+not expected to match SM percentage exactly.
 
 ### CUDA Green Context SM partitions (2026-07-22)
 
@@ -409,6 +480,8 @@ own real-GPU run if you want to publish benchmark results.
 - For `--gpu-share`: native Linux, Volta or newer, and NVIDIA MPS utilities
 - For `green-run`: a driver exposing CUDA 12.4 Green Context APIs and a
   supported NVIDIA GPU
+- For three or more `green-procs` lanes: a recent driver supporting
+  fine-grained Green Context splits and combining resources from one split
 
 ## License
 

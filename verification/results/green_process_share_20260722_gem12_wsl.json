@@ -1,0 +1,74 @@
+{
+  "actual_sm_counts": [
+    16,
+    26,
+    42
+  ],
+  "combined_tflops_per_second": 21.101743819946797,
+  "configuration": {
+    "batch_iters": 4,
+    "duration_seconds": 3.0,
+    "matrix_size": 4096,
+    "warmup_iters": 4
+  },
+  "device": 0,
+  "host": "DESKTOP-GEM12",
+  "launcher_stderr": "nVertake Green processes ready: lane 0 (pid 3374701)=16 SM (20.00% requested), lane 1 (pid 3374702)=26 SM (30.00% requested), lane 2 (pid 3374703)=42 SM (50.00% requested)",
+  "platform": "Linux-6.18.33.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "requested_shares": [
+    20.0,
+    30.0,
+    50.0
+  ],
+  "timestamp_utc": "2026-07-22T11:09:35.126256+00:00",
+  "workers": [
+    {
+      "checksum": -135.625,
+      "device_name": "NVIDIA GeForce RTX 3090 Ti",
+      "elapsed_seconds": 3.0317163369618356,
+      "iterations": 100,
+      "lane": 0,
+      "pid": 3374701,
+      "requested_share": 20.0,
+      "role": "lane-0",
+      "sm_count": 16,
+      "tflops_per_second": 4.533371140181646,
+      "throughput_share": 0.21483395774601322,
+      "torch_cuda": "13.0",
+      "torch_version": "2.12.1+cu130",
+      "total_sm_count": 84
+    },
+    {
+      "checksum": -3.73828125,
+      "device_name": "NVIDIA GeForce RTX 3090 Ti",
+      "elapsed_seconds": 3.0304153530159965,
+      "iterations": 148,
+      "lane": 1,
+      "pid": 3374702,
+      "requested_share": 30.0,
+      "role": "lane-1",
+      "sm_count": 26,
+      "tflops_per_second": 6.712269687259806,
+      "throughput_share": 0.31809075802137804,
+      "torch_cuda": "13.0",
+      "torch_version": "2.12.1+cu130",
+      "total_sm_count": 84
+    },
+    {
+      "checksum": -3.9453125,
+      "device_name": "NVIDIA GeForce RTX 3090 Ti",
+      "elapsed_seconds": 3.0120235119829886,
+      "iterations": 216,
+      "lane": 2,
+      "pid": 3374703,
+      "requested_share": 50.0,
+      "role": "lane-2",
+      "sm_count": 42,
+      "tflops_per_second": 9.856102992505347,
+      "throughput_share": 0.4670752842326088,
+      "torch_cuda": "13.0",
+      "torch_version": "2.12.1+cu130",
+      "total_sm_count": 84
+    }
+  ]
+}

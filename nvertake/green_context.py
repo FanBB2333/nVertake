@@ -1,8 +1,9 @@
-"""Experimental CUDA Green Context execution for two in-process tasks.
+"""Experimental CUDA Green Context execution for Python tasks and processes.
 
 CUDA Green Contexts partition a device's streaming multiprocessors (SMs) into
-separate CUDA contexts.  Unlike NVIDIA MPS, this API works without an MPS
-daemon, including on WSL, but all participating work must live in one process.
+separate CUDA contexts. Unlike NVIDIA MPS, this API works without an MPS
+daemon, including on WSL. nVertake supports both two task threads in one
+process and coordinated Python processes launched together.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ _CU_SUCCESS = 0
 _CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR = 75
 _CU_DEV_RESOURCE_TYPE_SM = 1
 _CU_GREEN_CTX_DEFAULT_STREAM = 0x1
+_CU_DEV_SM_RESOURCE_SPLIT_IGNORE_SM_COSCHEDULING = 0x1
 
 
 class GreenContextError(RuntimeError):
@@ -32,7 +34,11 @@ class GreenContextUnavailableError(GreenContextError):
 
 
 class _SmResource(ctypes.Structure):
-    _fields_ = [("sm_count", ctypes.c_uint)]
+    _fields_ = [
+        ("sm_count", ctypes.c_uint),
+        ("min_sm_partition_size", ctypes.c_uint),
+        ("sm_coscheduled_alignment", ctypes.c_uint),
+    ]
 
 
 class _ResourceData(ctypes.Union):
@@ -244,24 +250,67 @@ class _CudaDriver:
     def split_sm_resource(
         self, resource: _DeviceResource, requested_sm_count: int
     ) -> Tuple[_DeviceResource, _DeviceResource]:
-        partition = _DeviceResource()
-        remainder = _DeviceResource()
-        group_count = ctypes.c_uint(1)
-        self._check(
-            "cuDevSmResourceSplitByCount",
-            self._cu_split_sm_resource,
-            ctypes.byref(partition),
-            ctypes.byref(group_count),
-            ctypes.byref(resource),
-            ctypes.byref(remainder),
-            0,
-            requested_sm_count,
+        partitions, remainder = self.split_sm_resources(
+            resource,
+            group_count=1,
+            requested_sm_count=requested_sm_count,
         )
-        if group_count.value != 1:
+        if len(partitions) != 1:
             raise GreenContextError(
                 "CUDA driver did not produce the requested single SM resource group"
             )
-        return partition, remainder
+        return partitions[0], remainder
+
+    def split_sm_resources(
+        self,
+        resource: _DeviceResource,
+        *,
+        group_count: int,
+        requested_sm_count: int,
+        flags: int = 0,
+    ) -> Tuple[Tuple[_DeviceResource, ...], _DeviceResource]:
+        if group_count <= 0:
+            raise ValueError("group_count must be positive")
+        partition_array_type = _DeviceResource * group_count
+        partitions = partition_array_type()
+        remainder = _DeviceResource()
+        actual_group_count = ctypes.c_uint(group_count)
+        self._check(
+            "cuDevSmResourceSplitByCount",
+            self._cu_split_sm_resource,
+            partitions,
+            ctypes.byref(actual_group_count),
+            ctypes.byref(resource),
+            ctypes.byref(remainder),
+            flags,
+            requested_sm_count,
+        )
+        return (
+            tuple(partitions[index] for index in range(actual_group_count.value)),
+            remainder,
+        )
+
+    def sm_resource_group_count(
+        self,
+        resource: _DeviceResource,
+        *,
+        requested_sm_count: int,
+        flags: int = 0,
+    ) -> int:
+        """Query how many symmetric groups a split would produce."""
+
+        group_count = ctypes.c_uint()
+        self._check(
+            "cuDevSmResourceSplitByCount(query)",
+            self._cu_split_sm_resource,
+            None,
+            ctypes.byref(group_count),
+            ctypes.byref(resource),
+            None,
+            flags,
+            requested_sm_count,
+        )
+        return int(group_count.value)
 
     def create_green_context(
         self, device: int, resources: Sequence[_DeviceResource]
@@ -349,14 +398,35 @@ def current_green_context_lane() -> Optional[GreenContextLane]:
     return getattr(_CURRENT_LANE, "lane", None)
 
 
-def _normalized_shares(shares: Sequence[float]) -> Tuple[float, float]:
-    if len(shares) != 2:
-        raise ValueError("Green Context execution currently requires exactly two shares")
+def _normalize_shares(
+    shares: Sequence[float], *, minimum_count: int = 2
+) -> Tuple[float, ...]:
+    if len(shares) < minimum_count:
+        raise ValueError(
+            f"Green Context execution requires at least {minimum_count} shares"
+        )
     values = tuple(float(value) for value in shares)
     if any(not math.isfinite(value) or value <= 0 for value in values):
         raise ValueError("Green Context shares must be finite positive numbers")
     total = sum(values)
-    return values[0] * 100.0 / total, values[1] * 100.0 / total
+    return tuple(value * 100.0 / total for value in values)
+
+
+def _normalized_shares(shares: Sequence[float]) -> Tuple[float, float]:
+    if len(shares) != 2:
+        raise ValueError("Green Context execution currently requires exactly two shares")
+    normalized = _normalize_shares(shares)
+    return normalized[0], normalized[1]
+
+
+def _partition_requirements(compute_capability_major: int) -> Tuple[int, int]:
+    if compute_capability_major >= 9:
+        return 8, 8
+    if compute_capability_major == 8:
+        return 4, 2
+    if compute_capability_major == 7:
+        return 2, 2
+    return 1, 1
 
 
 def _requested_partition_sm_count(
@@ -366,14 +436,7 @@ def _requested_partition_sm_count(
 ) -> int:
     if total_sm_count <= 0:
         raise GreenContextError("CUDA driver reported no SM resources")
-    if compute_capability_major >= 9:
-        minimum, alignment = 8, 8
-    elif compute_capability_major == 8:
-        minimum, alignment = 4, 2
-    elif compute_capability_major == 7:
-        minimum, alignment = 2, 2
-    else:
-        minimum, alignment = 1, 1
+    minimum, alignment = _partition_requirements(compute_capability_major)
     if total_sm_count < minimum * 2:
         raise GreenContextUnavailableError(
             f"Device has only {total_sm_count} SMs; two Green Context lanes need at least "
@@ -385,6 +448,142 @@ def _requested_partition_sm_count(
     units = math.floor(ideal / alignment + 0.5 - 1e-12)
     requested = max(minimum, units * alignment)
     return min(requested, total_sm_count - minimum)
+
+
+def _apportion_resource_groups(
+    normalized_shares: Sequence[float], group_count: int
+) -> Tuple[int, ...]:
+    """Allocate homogeneous resource groups while giving every lane one group."""
+
+    lane_count = len(normalized_shares)
+    if group_count < lane_count:
+        raise GreenContextUnavailableError(
+            f"CUDA driver produced {group_count} SM groups for {lane_count} processes"
+        )
+    ideal = [share * group_count / 100.0 for share in normalized_shares]
+    counts = [max(1, math.floor(value)) for value in ideal]
+
+    while sum(counts) > group_count:
+        candidates = [index for index, count in enumerate(counts) if count > 1]
+        if not candidates:
+            raise GreenContextUnavailableError(
+                "Not enough SM resource groups for the requested process count"
+            )
+        index = max(candidates, key=lambda item: (counts[item] - ideal[item], -item))
+        counts[index] -= 1
+
+    while sum(counts) < group_count:
+        index = max(
+            range(lane_count),
+            key=lambda item: (ideal[item] - counts[item], -item),
+        )
+        counts[index] += 1
+    return tuple(counts)
+
+
+def _partition_resources_for_shares(
+    driver: Any,
+    available: Any,
+    shares: Sequence[float],
+    compute_capability_major: int,
+) -> Tuple[Tuple[Tuple[Any, ...], ...], Tuple[GreenContextLane, ...]]:
+    """Build one deterministic disjoint resource set for every process lane."""
+
+    normalized = _normalize_shares(shares)
+    total_sm_count = driver.sm_count(available)
+    lane_count = len(normalized)
+    minimum, _alignment = _partition_requirements(compute_capability_major)
+
+    if lane_count == 2:
+        smaller_index = 0 if normalized[0] <= normalized[1] else 1
+        requested_sms = _requested_partition_sm_count(
+            total_sm_count,
+            normalized[smaller_index],
+            compute_capability_major,
+        )
+        smaller, larger = driver.split_sm_resource(available, requested_sms)
+        lane_resources: List[Tuple[Any, ...]] = [(larger,), (larger,)]
+        lane_resources[smaller_index] = (smaller,)
+        lane_resources[1 - smaller_index] = (larger,)
+    else:
+        try:
+            requested_group_count = driver.sm_resource_group_count(
+                available,
+                requested_sm_count=1,
+                flags=_CU_DEV_SM_RESOURCE_SPLIT_IGNORE_SM_COSCHEDULING,
+            )
+            if requested_group_count < lane_count:
+                raise GreenContextUnavailableError(
+                    f"CUDA driver can create at most {requested_group_count} fine-grained "
+                    f"SM groups; requested {lane_count} process lanes"
+                )
+            groups, remainder = driver.split_sm_resources(
+                available,
+                group_count=requested_group_count,
+                requested_sm_count=1,
+                flags=_CU_DEV_SM_RESOURCE_SPLIT_IGNORE_SM_COSCHEDULING,
+            )
+        except GreenContextError as fine_grained_error:
+            requested_group_count = driver.sm_resource_group_count(
+                available,
+                requested_sm_count=minimum,
+            )
+            if requested_group_count < lane_count:
+                raise GreenContextUnavailableError(
+                    f"CUDA driver cannot create {lane_count} process lanes with either "
+                    "fine-grained or architecture-aligned SM partitions"
+                ) from fine_grained_error
+            groups, remainder = driver.split_sm_resources(
+                available,
+                group_count=requested_group_count,
+                requested_sm_count=minimum,
+            )
+        if len(groups) < lane_count:
+            raise GreenContextUnavailableError(
+                f"CUDA driver can create at most {len(groups)} process lanes with "
+                f"the current SM partition constraints; requested {lane_count}"
+            )
+        group_sm_counts = {driver.sm_count(resource) for resource in groups}
+        if len(group_sm_counts) != 1:
+            raise GreenContextError("CUDA driver returned non-homogeneous SM groups")
+        group_sm_count = next(iter(group_sm_counts))
+        group_allocations = _apportion_resource_groups(normalized, len(groups))
+
+        lane_resource_lists: List[List[Any]] = [[] for _ in normalized]
+        cursor = 0
+        for index, count in enumerate(group_allocations):
+            lane_resource_lists[index].extend(groups[cursor : cursor + count])
+            cursor += count
+        if cursor != len(groups):
+            raise GreenContextError("Internal SM resource allocation mismatch")
+
+        remainder_sm_count = driver.sm_count(remainder)
+        if remainder_sm_count > 0:
+            current_counts = [count * group_sm_count for count in group_allocations]
+            ideal_counts = [share * total_sm_count / 100.0 for share in normalized]
+            remainder_owner = max(
+                range(lane_count),
+                key=lambda item: (ideal_counts[item] - current_counts[item], -item),
+            )
+            lane_resource_lists[remainder_owner].append(remainder)
+        lane_resources = [tuple(resources) for resources in lane_resource_lists]
+
+    sm_counts = tuple(
+        sum(driver.sm_count(resource) for resource in resources)
+        for resources in lane_resources
+    )
+    if any(count <= 0 for count in sm_counts):
+        raise GreenContextError("CUDA driver produced an empty process SM partition")
+    if sum(sm_counts) != total_sm_count:
+        raise GreenContextError(
+            "CUDA driver did not assign every SM to a process lane: "
+            f"device={total_sm_count}, lanes={sm_counts}"
+        )
+    lanes = tuple(
+        GreenContextLane(index, normalized[index], sm_counts[index], total_sm_count)
+        for index in range(lane_count)
+    )
+    return tuple(lane_resources), lanes
 
 
 def _resolve_task(task: _Task) -> Tuple[Callable[..., Any], str]:
@@ -403,6 +602,111 @@ def _resolve_task(task: _Task) -> Tuple[Callable[..., Any], str]:
     if not callable(value):
         raise TypeError(f"Green Context task is not callable: {task}")
     return value, task
+
+
+class GreenProcessContext:
+    """Own one lane of a deterministic multi-process Green Context partition."""
+
+    def __init__(
+        self,
+        *,
+        device: int = 0,
+        shares: Sequence[float],
+        lane_index: int,
+        _driver: Optional[Any] = None,
+    ) -> None:
+        if device < 0:
+            raise ValueError("device must be non-negative")
+        if lane_index < 0 or lane_index >= len(shares):
+            raise ValueError("lane_index must identify one of the supplied shares")
+
+        driver = _driver if _driver is not None else _CudaDriver()
+        self._driver = driver
+        self.device = int(device)
+        self.lane_index = int(lane_index)
+        self._handle: Optional[_ContextHandle] = None
+        self._closed = False
+        self._binding_lock = threading.Lock()
+
+        driver.initialize()
+        cuda_device = driver.get_device(self.device)
+        self.compute_capability_major = driver.compute_capability_major(cuda_device)
+        available = driver.device_sm_resource(cuda_device)
+        self.total_sm_count = driver.sm_count(available)
+        resource_sets, self.lanes = _partition_resources_for_shares(
+            driver,
+            available,
+            shares,
+            self.compute_capability_major,
+        )
+        self.lane = self.lanes[self.lane_index]
+
+        try:
+            self._handle = driver.create_green_context(
+                cuda_device, resource_sets[self.lane_index]
+            )
+            actual_sm_count = driver.context_sm_count(self._handle.cuda_context)
+            if actual_sm_count != self.lane.sm_count:
+                raise GreenContextError(
+                    "CUDA Green Context SM count differs from the partition plan: "
+                    f"planned={self.lane.sm_count}, actual={actual_sm_count}"
+                )
+        except BaseException:
+            try:
+                self.close()
+            except GreenContextError:
+                pass
+            raise
+
+    @contextmanager
+    def bind(self) -> Iterator[GreenContextLane]:
+        """Bind this process lane to the calling thread for the task lifetime."""
+
+        if self._closed or self._handle is None:
+            raise GreenContextError("Green process context is closed")
+        if not self._binding_lock.acquire(blocking=False):
+            raise GreenContextError("Green process context is already bound")
+
+        previous = self._driver.current_context()
+        try:
+            self._driver.set_current_context(self._handle.cuda_context)
+            _CURRENT_LANE.lane = self.lane
+            try:
+                yield self.lane
+            finally:
+                try:
+                    self._driver.synchronize_current_context()
+                finally:
+                    self._driver.set_current_context(previous)
+        finally:
+            if hasattr(_CURRENT_LANE, "lane"):
+                del _CURRENT_LANE.lane
+            self._binding_lock.release()
+
+    def close(self) -> None:
+        """Destroy this process's Green Context after its task has finished."""
+
+        if self._closed:
+            return
+        if self._binding_lock.locked():
+            raise GreenContextError("Cannot close a bound Green process context")
+        self._closed = True
+        if self._handle is None:
+            return
+        handle = self._handle
+        self._handle = None
+        self._driver.destroy_green_context(handle)
+
+    def __enter__(self) -> "GreenProcessContext":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+        try:
+            self.close()
+        except GreenContextError:
+            if exc is None:
+                raise
+        return False
 
 
 class GreenContextExecutor:
@@ -643,6 +947,7 @@ __all__ = [
     "GreenContextError",
     "GreenContextExecutor",
     "GreenContextLane",
+    "GreenProcessContext",
     "GreenContextUnavailableError",
     "GreenRunResult",
     "current_green_context_lane",

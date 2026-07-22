@@ -21,9 +21,12 @@ __all__ = [
     "GreenContextError",
     "GreenContextUnavailableError",
     "GreenContextLane",
+    "GreenProcessContext",
     "GreenRunResult",
     "current_green_context_lane",
     "run_green_tasks",
+    "GreenProcessLaunchError",
+    "run_green_process_scripts",
     "MemoryManager",
     "fill_gpu_memory",
 ]
@@ -72,6 +75,7 @@ def __getattr__(name):
         "GreenContextError",
         "GreenContextUnavailableError",
         "GreenContextLane",
+        "GreenProcessContext",
         "GreenRunResult",
         "current_green_context_lane",
         "run_green_tasks",
@@ -81,6 +85,7 @@ def __getattr__(name):
             GreenContextExecutor,
             GreenContextLane,
             GreenContextUnavailableError,
+            GreenProcessContext,
             GreenRunResult,
             current_green_context_lane,
             run_green_tasks,
@@ -91,9 +96,18 @@ def __getattr__(name):
             "GreenContextError": GreenContextError,
             "GreenContextUnavailableError": GreenContextUnavailableError,
             "GreenContextLane": GreenContextLane,
+            "GreenProcessContext": GreenProcessContext,
             "GreenRunResult": GreenRunResult,
             "current_green_context_lane": current_green_context_lane,
             "run_green_tasks": run_green_tasks,
+        }[name]
+
+    if name in {"GreenProcessLaunchError", "run_green_process_scripts"}:
+        from .green_process import GreenProcessLaunchError, run_green_process_scripts
+
+        return {
+            "GreenProcessLaunchError": GreenProcessLaunchError,
+            "run_green_process_scripts": run_green_process_scripts,
         }[name]
 
     raise AttributeError(f"module 'nvertake' has no attribute {name!r}")

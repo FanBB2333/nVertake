@@ -1,0 +1,74 @@
+{
+  "actual_sm_counts": [
+    22,
+    34,
+    54
+  ],
+  "combined_tflops_per_second": 79.05727571428048,
+  "configuration": {
+    "batch_iters": 4,
+    "duration_seconds": 3.0,
+    "matrix_size": 4096,
+    "warmup_iters": 4
+  },
+  "device": 0,
+  "host": "406",
+  "launcher_stderr": "nVertake Green processes ready: lane 0 (pid 2615359)=22 SM (20.00% requested), lane 1 (pid 2615360)=34 SM (30.00% requested), lane 2 (pid 2615361)=54 SM (50.00% requested)",
+  "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+  "requested_shares": [
+    20.0,
+    30.0,
+    50.0
+  ],
+  "timestamp_utc": "2026-07-22T11:09:34.557136+00:00",
+  "workers": [
+    {
+      "checksum": -6.65625,
+      "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+      "elapsed_seconds": 3.000026316847652,
+      "iterations": 384,
+      "lane": 0,
+      "pid": 2615359,
+      "requested_share": 20.0,
+      "role": "lane-0",
+      "sm_count": 22,
+      "tflops_per_second": 17.59203172214309,
+      "throughput_share": 0.22252261494213568,
+      "torch_cuda": "12.8",
+      "torch_version": "2.8.0+cu128",
+      "total_sm_count": 110
+    },
+    {
+      "checksum": 42.9375,
+      "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+      "elapsed_seconds": 3.0112113400828093,
+      "iterations": 568,
+      "lane": 1,
+      "pid": 2615360,
+      "requested_share": 30.0,
+      "role": "lane-1",
+      "sm_count": 34,
+      "tflops_per_second": 25.924890934406875,
+      "throughput_share": 0.32792542748502457,
+      "torch_cuda": "12.8",
+      "torch_version": "2.8.0+cu128",
+      "total_sm_count": 110
+    },
+    {
+      "checksum": 33.3125,
+      "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+      "elapsed_seconds": 3.0008882500696927,
+      "iterations": 776,
+      "lane": 2,
+      "pid": 2615361,
+      "requested_share": 50.0,
+      "role": "lane-2",
+      "sm_count": 54,
+      "tflops_per_second": 35.54035305773052,
+      "throughput_share": 0.44955195757283983,
+      "torch_cuda": "12.8",
+      "torch_version": "2.8.0+cu128",
+      "total_sm_count": 110
+    }
+  ]
+}

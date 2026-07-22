@@ -12,7 +12,7 @@ File: `test/test_nvertake.py`
 
 Scope:
 - CLI argument parsing
-- Green Context partition calculation and concurrent task wiring
+- Green Context partition calculation, multi-process launch, and concurrent task wiring
 - scheduler wiring
 - PyTorch auto-priority env injection
 - memory target calculations
@@ -130,7 +130,33 @@ This experiment works on the tested native Linux and WSL hosts. Exact TFLOP/s
 ratios are workload- and architecture-dependent even when the SM partition is
 fixed.
 
-### 6. MPS Weighted-Share Experiment
+### 6. Multi-Process Green Context Experiment
+
+Files:
+
+- `verification/run_green_process_share_experiment.py`
+- `verification/green_process_gemm_worker.py`
+
+Purpose:
+
+- launch three or more real Python processes through `green-procs`
+- verify that all workers report one consistent, complete SM partition map
+- report distinct PIDs, exact SM counts, and measured throughput share
+- exercise native Linux and WSL without an MPS daemon
+
+Run:
+
+```bash
+bash test/run_tests_summary.sh green-procs-share \
+  --device 0 \
+  --shares 20,30,50 \
+  --output verification/results/green_process_share_latest.json
+```
+
+Use any number of positive weights. The experiment repeats the same saturated
+worker file once per weight; the public CLI also accepts different Python files.
+
+### 7. MPS Weighted-Share Experiment
 
 File: `verification/run_mps_share_experiment.py`
 
@@ -161,8 +187,9 @@ CLI exits before starting the worker and includes the tail of `control.log` and
 3. If `nvidia-smi pmon` is available, run `bash test/run_tests_summary.sh pmon --device 0`.
 4. Run `bash test/run_tests_summary.sh overtake` to collect benchmark data you
    can publish in the root README.
-5. Run the Green Context SM-share experiment.
-6. On a native Linux MPS host, run the MPS weighted-share experiment.
+5. Run the two-task Green Context SM-share experiment.
+6. Run the multi-process Green Context experiment with at least three weights.
+7. On a native Linux MPS host, run the MPS weighted-share experiment.
 
 ## Notes
 

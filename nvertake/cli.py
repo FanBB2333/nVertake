@@ -39,6 +39,9 @@ Examples:
   # Give two in-process Python tasks separate 25%/75% SM partitions
   nvertake --device 0 green-run --shares 25,75 --task jobs:background --task jobs:target
 
+  # Launch three Python processes with 20%/30%/50% requested SM shares
+  nvertake --device 0 green-procs --shares 20,30,50 first.py second.py third.py
+
   # Inspect or stop the per-device MPS daemon
   nvertake --device 0 mps status
   nvertake --device 0 mps stop
@@ -204,6 +207,37 @@ Examples:
         default=None,
         metavar='JSON',
         help='JSON object of keyword arguments; omit entirely or specify exactly twice',
+    )
+
+    green_procs_parser = subparsers.add_parser(
+        'green-procs',
+        help='Run two or more Python files in separate Green Context processes',
+    )
+    green_procs_parser.add_argument(
+        '--shares',
+        required=True,
+        metavar='P1,P2,...',
+        help='Relative SM shares in the same order as the Python files',
+    )
+    green_procs_parser.add_argument(
+        '--script-args',
+        action='append',
+        default=None,
+        metavar='JSON',
+        help='JSON string array for one script; omit entirely or specify once per file',
+    )
+    green_procs_parser.add_argument(
+        '--startup-timeout',
+        type=float,
+        default=60.0,
+        metavar='SECONDS',
+        help='Maximum time to create every process partition (default: 60)',
+    )
+    green_procs_parser.add_argument(
+        'scripts',
+        nargs='+',
+        metavar='SCRIPT.py',
+        help='Python files to launch concurrently',
     )
     
     return parser
@@ -469,16 +503,23 @@ def cmd_mps(args: argparse.Namespace) -> int:
         return 1
 
 
-def _parse_green_shares(value: str) -> tuple:
+def _parse_share_list(value: str) -> tuple:
     parts = value.split(',')
-    if len(parts) != 2:
-        raise ValueError("--shares must contain exactly two comma-separated numbers")
+    if len(parts) < 2:
+        raise ValueError("--shares must contain at least two comma-separated numbers")
     try:
         shares = tuple(float(part) for part in parts)
     except ValueError as exc:
-        raise ValueError("--shares must contain two numbers") from exc
+        raise ValueError("--shares must contain comma-separated numbers") from exc
     if any(not math.isfinite(share) or share <= 0 for share in shares):
         raise ValueError("--shares values must be finite and positive")
+    return shares
+
+
+def _parse_green_shares(value: str) -> tuple:
+    shares = _parse_share_list(value)
+    if len(shares) != 2:
+        raise ValueError("green-run requires exactly two --shares values")
     return shares
 
 
@@ -496,6 +537,31 @@ def _parse_green_task_kwargs(values: Optional[List[str]]) -> tuple:
         if not isinstance(item, dict):
             raise ValueError(f"--task-kwargs #{index + 1} must be a JSON object")
         parsed.append(item)
+    return tuple(parsed)
+
+
+def _parse_green_script_args(
+    values: Optional[List[str]], script_count: int
+) -> tuple:
+    if values is None:
+        return tuple(() for _ in range(script_count))
+    if len(values) != script_count:
+        raise ValueError(
+            "--script-args must be omitted or specified once per Python file"
+        )
+    parsed = []
+    for index, value in enumerate(values):
+        try:
+            item = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"--script-args #{index + 1} is not valid JSON: {exc}") from exc
+        if not isinstance(item, list) or any(
+            not isinstance(argument, str) for argument in item
+        ):
+            raise ValueError(
+                f"--script-args #{index + 1} must be a JSON array of strings"
+            )
+        parsed.append(tuple(item))
     return tuple(parsed)
 
 
@@ -519,6 +585,29 @@ def cmd_green_run(args: argparse.Namespace) -> int:
         return 130
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         logger.error("Green Context run failed: %s", exc)
+        return 1
+
+
+def cmd_green_procs(args: argparse.Namespace) -> int:
+    """Launch Python files in separately partitioned CUDA processes."""
+    try:
+        shares = _parse_share_list(args.shares)
+        script_args = _parse_green_script_args(args.script_args, len(args.scripts))
+        from .green_process import run_green_process_scripts
+
+        return run_green_process_scripts(
+            args.scripts,
+            shares=shares,
+            script_args=script_args,
+            device=args.device,
+            startup_timeout=args.startup_timeout,
+            quiet=bool(args.quiet),
+        )
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        return 130
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("Green process launch failed: %s", exc)
         return 1
 
 
@@ -554,6 +643,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             _parse_green_task_kwargs(args.green_task_kwargs)
         except ValueError as exc:
             parser.error(str(exc))
+
+    if args.command == 'green-procs':
+        if args.filled is not None:
+            parser.error("--filled cannot be combined with Green process sharing")
+        try:
+            shares = _parse_share_list(args.shares)
+            if len(shares) != len(args.scripts):
+                raise ValueError(
+                    "green-procs requires one --shares value per Python file"
+                )
+            _parse_green_script_args(args.script_args, len(args.scripts))
+            if args.startup_timeout <= 0:
+                raise ValueError("--startup-timeout must be positive")
+        except ValueError as exc:
+            parser.error(str(exc))
     
     # Route to appropriate command
     if args.command == 'info':
@@ -562,6 +666,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cmd_mps(args)
     elif args.command == 'green-run':
         return cmd_green_run(args)
+    elif args.command == 'green-procs':
+        return cmd_green_procs(args)
     elif args.command == 'run':
         return cmd_run(args, fill_ratio=args.filled)
     elif args.command == 'exec':

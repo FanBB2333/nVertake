@@ -1,0 +1,92 @@
+{
+  "actual_sm_counts": [
+    12,
+    22,
+    32,
+    44
+  ],
+  "combined_tflops_per_second": 60.38983668967434,
+  "configuration": {
+    "batch_iters": 4,
+    "duration_seconds": 3.0,
+    "matrix_size": 4096,
+    "warmup_iters": 4
+  },
+  "device": 0,
+  "host": "406",
+  "launcher_stderr": "nVertake Green processes ready: lane 0 (pid 2616512)=12 SM (10.00% requested), lane 1 (pid 2616513)=22 SM (20.00% requested), lane 2 (pid 2616514)=32 SM (30.00% requested), lane 3 (pid 2616515)=44 SM (40.00% requested)",
+  "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+  "requested_shares": [
+    10.0,
+    20.0,
+    30.0,
+    40.0
+  ],
+  "timestamp_utc": "2026-07-22T11:09:40.689304+00:00",
+  "workers": [
+    {
+      "checksum": 16.046875,
+      "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+      "elapsed_seconds": 3.0168699980713427,
+      "iterations": 164,
+      "lane": 0,
+      "pid": 2616512,
+      "requested_share": 10.0,
+      "role": "lane-0",
+      "sm_count": 12,
+      "tflops_per_second": 7.471315762302521,
+      "throughput_share": 0.12371809847235425,
+      "torch_cuda": "12.8",
+      "torch_version": "2.8.0+cu128",
+      "total_sm_count": 110
+    },
+    {
+      "checksum": -90.5,
+      "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+      "elapsed_seconds": 3.0041562968399376,
+      "iterations": 256,
+      "lane": 1,
+      "pid": 2616513,
+      "requested_share": 20.0,
+      "role": "lane-1",
+      "sm_count": 22,
+      "tflops_per_second": 11.71189798807816,
+      "throughput_share": 0.19393822918022066,
+      "torch_cuda": "12.8",
+      "torch_version": "2.8.0+cu128",
+      "total_sm_count": 110
+    },
+    {
+      "checksum": -24.8125,
+      "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+      "elapsed_seconds": 3.0226097218692303,
+      "iterations": 388,
+      "lane": 2,
+      "pid": 2616514,
+      "requested_share": 30.0,
+      "role": "lane-2",
+      "sm_count": 32,
+      "tflops_per_second": 17.642474171014758,
+      "throughput_share": 0.2921431011922463,
+      "torch_cuda": "12.8",
+      "torch_version": "2.8.0+cu128",
+      "total_sm_count": 110
+    },
+    {
+      "checksum": -12.3046875,
+      "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+      "elapsed_seconds": 3.0095931191463023,
+      "iterations": 516,
+      "lane": 3,
+      "pid": 2616515,
+      "requested_share": 40.0,
+      "role": "lane-3",
+      "sm_count": 44,
+      "tflops_per_second": 23.5641487682789,
+      "throughput_share": 0.3902005711551788,
+      "torch_cuda": "12.8",
+      "torch_version": "2.8.0+cu128",
+      "total_sm_count": 110
+    }
+  ]
+}

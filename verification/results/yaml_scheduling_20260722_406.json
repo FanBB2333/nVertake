@@ -1,0 +1,54 @@
+{
+  "date": "2026-07-22",
+  "host": "406-tailscale",
+  "device": {
+    "name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+    "driver_capability": "12.8",
+    "compute_capability_major": 12,
+    "total_sm_count": 110,
+    "max_green_processes": 55
+  },
+  "doctor_dry_run": {
+    "requested_shares": [20, 30, 50],
+    "partition_sm_counts": [22, 34, 54],
+    "started_processes": false
+  },
+  "yaml_launch": {
+    "status": "completed",
+    "partition_sm_counts": [32, 78],
+    "pids_distinct": true,
+    "memory_shares": [0.3, 0.65],
+    "observed_memory_fractions": [0.2999999999947627, 0.6499999999973813],
+    "throughput_unit": "GEMM/s",
+    "throughput": [1918.5417377349793, 4142.756372482558],
+    "independent_logs": true,
+    "json_report": true
+  },
+  "corrective_calibration": {
+    "target_ratios": [0.3, 0.7],
+    "rounds": [
+      {
+        "partition_sm_counts": [56, 54],
+        "observed_ratios": [0.5056072541449033, 0.4943927458550967],
+        "next_sm_shares": [35.23308212340349, 64.76691787659651]
+      },
+      {
+        "partition_sm_counts": [40, 70],
+        "observed_ratios": [0.3905384258292996, 0.6094615741707005],
+        "next_sm_shares": [29.10307342784162, 70.89692657215838]
+      }
+    ],
+    "final_partition_sm_counts": [32, 78],
+    "status": "completed"
+  },
+  "three_process_launch": {
+    "requested_shares": [20, 30, 50],
+    "partition_sm_counts": [22, 34, 54],
+    "memory_shares": [0.2, 0.3, 0.45],
+    "status": "completed"
+  },
+  "tests": {
+    "unittest_count": 66,
+    "status": "passed"
+  }
+}

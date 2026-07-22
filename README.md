@@ -495,6 +495,8 @@ repository does not depend on FakeGPU for its main test flow.
   `verification/results/green_context_share_20260722_{406,gem12_wsl}.json`
 - 2026-07-22 multi-process results:
   `verification/results/green_process_share{,_four}_20260722_{406,gem12_wsl}.json`
+- 2026-07-22 YAML, memory, monitor, and calibration results:
+  `verification/results/yaml_scheduling_20260722_{406,gem12_wsl}.json`
 - Plot-ready result summary:
   `verification/results/resource_contention_summary_20260509.json`
 

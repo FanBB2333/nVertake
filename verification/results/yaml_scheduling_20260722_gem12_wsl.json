@@ -1,0 +1,56 @@
+{
+  "date": "2026-07-22",
+  "host": "gem12-wsl-tailscale",
+  "device": {
+    "name": "NVIDIA GeForce RTX 3090 Ti",
+    "driver_capability": "13.1",
+    "compute_capability_major": 8,
+    "total_sm_count": 84,
+    "max_green_processes": 42
+  },
+  "doctor_dry_run": {
+    "requested_shares": [20, 30, 50],
+    "partition_sm_counts": [16, 26, 42],
+    "started_processes": false
+  },
+  "yaml_launch": {
+    "status": "completed",
+    "partition_sm_counts": [26, 58],
+    "pids_distinct": true,
+    "memory_shares": [0.3, 0.65],
+    "observed_memory_fractions": [0.2999999999689401, 0.6499999999844701],
+    "pytorch_memory_fallback_mib": [40, 40],
+    "throughput_unit": "GEMM/s",
+    "throughput": [574.1163240132254, 1173.6210519247422],
+    "independent_logs": true,
+    "json_report": true
+  },
+  "corrective_calibration": {
+    "target_ratios": [0.3, 0.7],
+    "rounds": [
+      {
+        "partition_sm_counts": [42, 42],
+        "observed_ratios": [0.49978538208058737, 0.5002146179194126],
+        "next_sm_shares": [35.60597079015799, 64.394029209842]
+      },
+      {
+        "partition_sm_counts": [30, 54],
+        "observed_ratios": [0.36552875231866744, 0.6344712476813326],
+        "next_sm_shares": [31.011041453147957, 68.98895854685205]
+      }
+    ],
+    "final_partition_sm_counts": [26, 58],
+    "status": "completed"
+  },
+  "three_process_launch": {
+    "requested_shares": [20, 30, 50],
+    "partition_sm_counts": [16, 26, 42],
+    "memory_shares": [0.2, 0.3, 0.45],
+    "status": "completed"
+  },
+  "tests": {
+    "pytest_count": 71,
+    "pytest_subtests": 3,
+    "status": "passed"
+  }
+}

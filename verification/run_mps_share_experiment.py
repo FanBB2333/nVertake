@@ -45,12 +45,24 @@ def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
     ]
 
 
-def _wait_for_event(path: Path, event: str, timeout: float) -> Dict[str, Any]:
+def _wait_for_event(
+    path: Path,
+    event: str,
+    timeout: float,
+    *,
+    process: Optional[subprocess.Popen[Any]] = None,
+    stderr_path: Optional[Path] = None,
+) -> Dict[str, Any]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         for record in _load_jsonl(path):
             if record.get("event") == event:
                 return record
+        if process is not None and process.poll() is not None:
+            detail = f"; see {stderr_path}" if stderr_path is not None else ""
+            raise RuntimeError(
+                f"Process exited with status {process.returncode} before event={event!r}{detail}"
+            )
         time.sleep(0.1)
     raise TimeoutError(f"Timed out waiting for event={event!r} in {path}")
 
@@ -190,7 +202,13 @@ def _run_case(
                 text=True,
                 start_new_session=True,
             )
-            _wait_for_event(resident_log, "ready", timeout=args.startup_timeout)
+            _wait_for_event(
+                resident_log,
+                "ready",
+                timeout=args.startup_timeout,
+                process=resident,
+                stderr_path=resident_stderr,
+            )
 
             target = subprocess.Popen(
                 target_command,
@@ -204,6 +222,8 @@ def _run_case(
                 target_log,
                 "ready",
                 timeout=args.startup_timeout,
+                process=target,
+                stderr_path=target_stderr,
             )
             target_returncode = target.wait(timeout=args.duration_seconds + args.startup_timeout)
             if target_returncode != 0:

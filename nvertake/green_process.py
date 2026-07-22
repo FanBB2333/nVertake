@@ -78,8 +78,13 @@ def _worker_command(
     return command
 
 
-def _child_environment(device: int) -> Dict[str, str]:
+def _child_environment(
+    device: int,
+    custom_environment: Optional[Mapping[str, str]] = None,
+) -> Dict[str, str]:
     env = os.environ.copy()
+    if custom_environment:
+        env.update(custom_environment)
     env["CUDA_VISIBLE_DEVICES"] = str(device)
     env["NVERTAKE_GREEN_PROCESS"] = "1"
     env["NVERTAKE_GREEN_PHYSICAL_DEVICE"] = str(device)
@@ -356,11 +361,7 @@ def launch_green_process_scripts(
                     lane_job_names,
                 )
             ):
-                env = _child_environment(device)
-                env.update(custom_environment)
-                env["CUDA_VISIBLE_DEVICES"] = str(device)
-                env["NVERTAKE_GREEN_PROCESS"] = "1"
-                env["NVERTAKE_GREEN_PHYSICAL_DEVICE"] = str(device)
+                env = _child_environment(device, custom_environment)
                 env["NVERTAKE_JOB_NAME"] = job_name
                 if memory_share is not None:
                     env["NVERTAKE_MEMORY_SHARE"] = str(float(memory_share))

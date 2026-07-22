@@ -265,6 +265,23 @@ class TestGreenProcessLauncherHelpers(unittest.TestCase):
         self.assertNotIn("CUDA_MPS_PIPE_DIRECTORY", env)
         self.assertNotIn("NVERTAKE_AUTO_PRIORITY", env)
 
+    def test_custom_environment_cannot_override_green_process_isolation(self):
+        env = _child_environment(
+            2,
+            {
+                "CUDA_VISIBLE_DEVICES": "7",
+                "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE": "50",
+                "NVERTAKE_AUTO_PRIORITY": "1",
+                "USER_SETTING": "kept",
+                "PYTHONPATH": "/custom",
+            },
+        )
+        self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "2")
+        self.assertEqual(env["USER_SETTING"], "kept")
+        self.assertNotIn("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", env)
+        self.assertNotIn("NVERTAKE_AUTO_PRIORITY", env)
+        self.assertTrue(env["PYTHONPATH"].endswith(os.pathsep + "/custom"))
+
     def test_ready_metadata_requires_identical_partition_maps(self):
         metadata = (
             {

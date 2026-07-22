@@ -5,7 +5,7 @@ A Python package that enables priority scheduling and memory reservation
 on NVIDIA GPUs.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "nVertake Authors"
 
 __all__ = [

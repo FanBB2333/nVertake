@@ -161,7 +161,10 @@ def enrich_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
                 job["throughput"] = metric["throughput"]
                 job["throughput_unit"] = metric["unit"]
                 job["throughput_updated_at"] = metric.get("updated_at")
-                if not (isinstance(pid, int) and pid in memory):
+                if not (isinstance(pid, int) and pid in memory) and not (
+                    job.get("gpu_memory_source") == "nvidia-smi"
+                    and job.get("gpu_memory_mib") is not None
+                ):
                     fallback_memory = metric.get("gpu_memory_mib")
                     if isinstance(fallback_memory, (int, float)):
                         job["gpu_memory_mib"] = int(fallback_memory)
@@ -280,7 +283,10 @@ class RunReport:
                         job["throughput"] = metric["throughput"]
                         job["throughput_unit"] = metric["unit"]
                         job["throughput_updated_at"] = metric.get("updated_at")
-                        if not (isinstance(pid, int) and pid in memory):
+                        if not (isinstance(pid, int) and pid in memory) and not (
+                            job.get("gpu_memory_source") == "nvidia-smi"
+                            and job.get("gpu_memory_mib") is not None
+                        ):
                             fallback_memory = metric.get("gpu_memory_mib")
                             if isinstance(fallback_memory, (int, float)):
                                 used = int(fallback_memory)

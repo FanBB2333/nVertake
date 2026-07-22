@@ -274,6 +274,40 @@ class TestReportsAndMultiGpuLaunch(unittest.TestCase):
         self.assertIn("VRAM MiB", table)
         self.assertIn("42 items/s", table)
 
+    def test_completed_nvidia_memory_sample_is_not_replaced_by_fallback(self):
+        with tempfile.TemporaryDirectory() as root:
+            metric_path = Path(root) / "metric.json"
+            metric_path.write_text(
+                json.dumps(
+                    {
+                        "throughput": 1,
+                        "unit": "items/s",
+                        "gpu_memory_mib": 16,
+                        "gpu_memory_source": "pytorch_allocator",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            payload = {
+                "run_id": "run",
+                "status": "completed",
+                "jobs": [
+                    {
+                        "name": "worker",
+                        "status": "completed",
+                        "gpu_memory_mib": 456,
+                        "gpu_memory_source": "nvidia-smi",
+                        "metrics_path": str(metric_path),
+                    }
+                ],
+            }
+            with patch(
+                "nvertake.runtime.query_gpu_process_memory", return_value={}
+            ):
+                snapshot = enrich_report(payload)
+        self.assertEqual(snapshot["jobs"][0]["gpu_memory_mib"], 456)
+        self.assertEqual(snapshot["jobs"][0]["gpu_memory_source"], "nvidia-smi")
+
     def test_launch_submits_one_group_per_gpu_and_writes_report(self):
         with tempfile.TemporaryDirectory() as root:
             root_path = Path(root)

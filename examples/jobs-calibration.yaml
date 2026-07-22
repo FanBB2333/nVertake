@@ -1,0 +1,30 @@
+version: 1
+logs_dir: ./runs
+
+defaults:
+  cwd: .
+  device: 0
+  env:
+    PYTHONUNBUFFERED: "1"
+
+calibration:
+  enabled: true
+  duration: 3
+  rounds: 2
+  tolerance: 0.01
+  damping: 0.7
+
+jobs:
+  - name: calibration-small
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "5"]
+    sm_share: 50
+    target_share: 30
+    memory_share: 0.30
+
+  - name: calibration-large
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "5"]
+    sm_share: 50
+    target_share: 70
+    memory_share: 0.65

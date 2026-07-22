@@ -142,6 +142,9 @@ clearly when a job does not report a positive value or when units differ on the
 same GPU. Use calibration mode only when the script treats the calibration
 environment as a short, side-effect-safe benchmark. `--no-calibrate` skips it,
 and `--calibrate` enables it from the command line.
+[`examples/jobs-calibration.yaml`](examples/jobs-calibration.yaml) deliberately
+starts at a 50/50 SM split while targeting a 30/70 throughput ratio, making the
+correction rounds visible in the JSON report.
 
 ### Run with Elevated Priority
 

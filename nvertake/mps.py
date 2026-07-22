@@ -387,7 +387,7 @@ class MPSController:
             "'device_count': torch.cuda.device_count(), "
             "'device_name': p.name, "
             "'sm_count': p.multi_processor_count"
-            "}}, sort_keys=True))"
+            "}, sort_keys=True))"
         )
         try:
             completed = subprocess.run(

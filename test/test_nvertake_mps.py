@@ -169,8 +169,10 @@ class TestMPSController(unittest.TestCase):
                 stdout="__NVERTAKE_MPS_PROBE__=" + json.dumps(payload) + "\n",
                 stderr="",
             )
-            with patch("nvertake.mps.subprocess.run", return_value=completed):
+            with patch("nvertake.mps.subprocess.run", return_value=completed) as run:
                 self.assertEqual(controller.probe_client({"A": "B"}), payload)
+            probe_code = run.call_args.args[0][2]
+            compile(probe_code, "<nvertake-mps-probe>", "exec")
 
     def test_probe_failure_includes_server_log(self):
         with tempfile.TemporaryDirectory() as root:

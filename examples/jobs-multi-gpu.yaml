@@ -1,0 +1,36 @@
+version: 1
+logs_dir: ./runs
+
+defaults:
+  cwd: .
+  env:
+    PYTHONUNBUFFERED: "1"
+
+jobs:
+  - name: gpu0-small
+    script: throughput_worker.py
+    args: ["--seconds", "10"]
+    device: 0
+    sm_share: 25
+    memory_share: 0.25
+
+  - name: gpu0-large
+    script: throughput_worker.py
+    args: ["--seconds", "10"]
+    device: 0
+    sm_share: 75
+    memory_share: 0.70
+
+  - name: gpu1-small
+    script: throughput_worker.py
+    args: ["--seconds", "10"]
+    device: 1
+    sm_share: 40
+    memory_share: 0.40
+
+  - name: gpu1-large
+    script: throughput_worker.py
+    args: ["--seconds", "10"]
+    device: 1
+    sm_share: 60
+    memory_share: 0.55

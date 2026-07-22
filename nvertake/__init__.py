@@ -27,6 +27,9 @@ __all__ = [
     "run_green_tasks",
     "GreenProcessLaunchError",
     "run_green_process_scripts",
+    "inspect_green_device",
+    "plan_green_partitions",
+    "report_throughput",
     "MemoryManager",
     "fill_gpu_memory",
 ]
@@ -109,5 +112,18 @@ def __getattr__(name):
             "GreenProcessLaunchError": GreenProcessLaunchError,
             "run_green_process_scripts": run_green_process_scripts,
         }[name]
+
+    if name in {"inspect_green_device", "plan_green_partitions"}:
+        from .diagnostics import inspect_green_device, plan_green_partitions
+
+        return {
+            "inspect_green_device": inspect_green_device,
+            "plan_green_partitions": plan_green_partitions,
+        }[name]
+
+    if name == "report_throughput":
+        from .metrics import report_throughput
+
+        return report_throughput
 
     raise AttributeError(f"module 'nvertake' has no attribute {name!r}")

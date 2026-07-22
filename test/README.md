@@ -13,6 +13,9 @@ File: `test/test_nvertake.py`
 Scope:
 - CLI argument parsing
 - Green Context partition calculation, multi-process launch, and concurrent task wiring
+- read-only driver diagnostics and dry-run allocation plans
+- YAML validation, multi-GPU grouping, logs, runtime reports, and monitor output
+- PyTorch memory-fraction wiring and throughput calibration math
 - scheduler wiring
 - PyTorch auto-priority env injection
 - memory target calculations
@@ -180,6 +183,22 @@ The experiment is not available in WSL. If the MPS client cannot connect, the
 CLI exits before starting the worker and includes the tail of `control.log` and
 `server.log` in the error.
 
+### 8. YAML Launch, Memory Cap, Monitor, and Calibration Smoke Test
+
+The example worker publishes `GEMM/s` through `report_throughput()`, so one run
+exercises the YAML launcher, independent logs, PyTorch memory fractions, live
+JSON state, and automatic calibration:
+
+```bash
+nvertake launch examples/jobs.yaml --dry-run
+nvertake launch examples/jobs.yaml --calibrate
+nvertake monitor
+```
+
+While the launch is active, `nvertake monitor --watch` displays PID, assigned
+SM count, framebuffer memory, reported throughput, and state. The final report
+is stored below `examples/runs/<run-id>/report.json`.
+
 ## Recommended Workflow
 
 1. Start with `bash test/run_tests_summary.sh unit`.
@@ -190,6 +209,7 @@ CLI exits before starting the worker and includes the tail of `control.log` and
 5. Run the two-task Green Context SM-share experiment.
 6. Run the multi-process Green Context experiment with at least three weights.
 7. On a native Linux MPS host, run the MPS weighted-share experiment.
+8. Run the YAML launch smoke test and inspect its final JSON report.
 
 ## Notes
 

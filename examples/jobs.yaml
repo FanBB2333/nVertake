@@ -1,0 +1,30 @@
+version: 1
+logs_dir: ./runs
+startup_timeout: 60
+
+defaults:
+  cwd: .
+  device: 0
+  env:
+    PYTHONUNBUFFERED: "1"
+
+calibration:
+  enabled: false
+  duration: 4
+  rounds: 2
+  tolerance: 0.05
+
+jobs:
+  - name: background
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "10"]
+    sm_share: 30
+    target_share: 30
+    memory_share: 0.30
+
+  - name: foreground
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "10"]
+    sm_share: 70
+    target_share: 70
+    memory_share: 0.65

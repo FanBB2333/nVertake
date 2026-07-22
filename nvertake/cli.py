@@ -8,6 +8,7 @@ import math
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -167,6 +168,81 @@ Examples:
         help='Show GPU information',
     )
 
+    doctor_parser = subparsers.add_parser(
+        'doctor',
+        help='Inspect CUDA Green Context capabilities without launching work',
+    )
+    doctor_parser.add_argument(
+        '--shares',
+        dest='doctor_shares',
+        default=None,
+        metavar='P1,P2,...',
+        help='Also preview the exact driver-selected SM allocation',
+    )
+    doctor_parser.add_argument(
+        '--json',
+        action='store_true',
+        dest='doctor_json',
+        help='Print machine-readable JSON',
+    )
+
+    launch_parser = subparsers.add_parser(
+        'launch',
+        help='Launch a multi-process, multi-GPU YAML job file',
+    )
+    launch_parser.add_argument(
+        'job_file',
+        metavar='JOBS.yaml',
+        help='YAML job configuration',
+    )
+    launch_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        dest='launch_dry_run',
+        help='Validate the file and preview exact SM allocations without launching',
+    )
+    calibration_group = launch_parser.add_mutually_exclusive_group()
+    calibration_group.add_argument(
+        '--calibrate',
+        action='store_true',
+        help='Force the YAML short-run throughput calibration on',
+    )
+    calibration_group.add_argument(
+        '--no-calibrate',
+        action='store_true',
+        help='Skip calibration even if enabled in YAML',
+    )
+
+    monitor_parser = subparsers.add_parser(
+        'monitor',
+        help='Show PID, allocated SMs, GPU memory, throughput, and status',
+    )
+    monitor_parser.add_argument(
+        'run_identifier',
+        nargs='?',
+        default=None,
+        metavar='RUN_ID_OR_REPORT',
+        help='Run id or JSON report path (default: latest local run)',
+    )
+    monitor_parser.add_argument(
+        '--json',
+        action='store_true',
+        dest='monitor_json',
+        help='Print a machine-readable snapshot',
+    )
+    monitor_parser.add_argument(
+        '--watch',
+        action='store_true',
+        help='Refresh until the run reaches a terminal state',
+    )
+    monitor_parser.add_argument(
+        '--interval',
+        type=float,
+        default=1.0,
+        metavar='SECONDS',
+        help='Watch refresh interval (default: 1)',
+    )
+
     mps_parser = subparsers.add_parser(
         'mps',
         help='Manage the per-device NVIDIA MPS daemon',
@@ -220,6 +296,12 @@ Examples:
         help='Relative SM shares in the same order as the Python files',
     )
     green_procs_parser.add_argument(
+        '--memory-shares',
+        default=None,
+        metavar='F1,F2,...',
+        help='Optional PyTorch memory fractions (0-1) in file order; total must be <= 1',
+    )
+    green_procs_parser.add_argument(
         '--script-args',
         action='append',
         default=None,
@@ -232,6 +314,11 @@ Examples:
         default=60.0,
         metavar='SECONDS',
         help='Maximum time to create every process partition (default: 60)',
+    )
+    green_procs_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Preview the exact SM allocation without starting any process',
     )
     green_procs_parser.add_argument(
         'scripts',
@@ -347,6 +434,107 @@ def cmd_info(args: argparse.Namespace) -> int:
             print(f"GPU {i}: Error getting info - {e}\n")
     
     return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Inspect Green Context support and optionally preview an SM split."""
+
+    try:
+        from .diagnostics import (
+            format_doctor_report,
+            inspect_green_device,
+            plan_green_partitions,
+        )
+
+        if args.doctor_shares is not None:
+            shares = _parse_share_list(args.doctor_shares)
+            plan = plan_green_partitions(shares, device=args.device)
+            if args.doctor_json:
+                print(json.dumps(plan.to_dict(), sort_keys=True))
+            else:
+                print(format_doctor_report(plan.diagnostics))
+                print("Planned SM allocation:")
+                for lane in plan.lanes:
+                    print(
+                        f"  lane {lane.index}: {lane.sm_count} SM "
+                        f"({lane.requested_share:.2f}% requested, "
+                        f"{lane.actual_sm_share * 100.0:.2f}% actual)"
+                    )
+            return 0
+
+        diagnostics = inspect_green_device(args.device)
+        if args.doctor_json:
+            print(json.dumps(diagnostics.to_dict(), sort_keys=True))
+        else:
+            print(format_doctor_report(diagnostics))
+        return 0
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("CUDA Green Context diagnosis failed: %s", exc)
+        return 1
+
+
+def cmd_launch(args: argparse.Namespace) -> int:
+    """Validate, preview, or launch a YAML job file."""
+
+    try:
+        from dataclasses import replace
+
+        from .jobs import launch_jobs, load_job_config, plan_job_config
+
+        config = load_job_config(args.job_file)
+        if args.calibrate:
+            config = replace(
+                config,
+                calibration=replace(config.calibration, enabled=True),
+            )
+        elif args.no_calibrate:
+            config = replace(
+                config,
+                calibration=replace(config.calibration, enabled=False),
+            )
+        if args.launch_dry_run:
+            print(json.dumps(plan_job_config(config), sort_keys=True))
+            return 0
+        result = launch_jobs(config, quiet=bool(args.quiet))
+        return result.exit_code
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        return 130
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("YAML job launch failed: %s", exc)
+        return 1
+
+
+def cmd_monitor(args: argparse.Namespace) -> int:
+    """Print one or more enriched snapshots of a launch report."""
+
+    try:
+        from .runtime import (
+            TERMINAL_RUN_STATES,
+            enrich_report,
+            format_monitor_table,
+            load_report,
+            resolve_report_path,
+        )
+
+        if args.interval <= 0 or not math.isfinite(args.interval):
+            raise ValueError("--interval must be positive")
+        report_path = resolve_report_path(args.run_identifier)
+        while True:
+            snapshot = enrich_report(load_report(report_path))
+            if args.monitor_json:
+                print(json.dumps(snapshot, sort_keys=True), flush=True)
+            else:
+                print(format_monitor_table(snapshot), flush=True)
+            if not args.watch or snapshot.get("status") in TERMINAL_RUN_STATES:
+                break
+            time.sleep(args.interval)
+        return 0
+    except KeyboardInterrupt:
+        return 130
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("Monitor failed: %s", exc)
+        return 1
 
 
 def cmd_run(
@@ -523,6 +711,25 @@ def _parse_green_shares(value: str) -> tuple:
     return shares
 
 
+def _parse_memory_share_list(value: Optional[str], expected_count: int) -> tuple:
+    if value is None:
+        return tuple(None for _ in range(expected_count))
+    parts = value.split(',')
+    if len(parts) != expected_count:
+        raise ValueError(
+            "--memory-shares requires one fraction per Python file"
+        )
+    try:
+        fractions = tuple(float(part) for part in parts)
+    except ValueError as exc:
+        raise ValueError("--memory-shares must contain comma-separated numbers") from exc
+    if any(not math.isfinite(value) or not (0.0 < value <= 1.0) for value in fractions):
+        raise ValueError("--memory-shares values must be in the range (0, 1]")
+    if sum(fractions) > 1.0 + 1e-9:
+        raise ValueError("--memory-shares values must total no more than 1.0")
+    return fractions
+
+
 def _parse_green_task_kwargs(values: Optional[List[str]]) -> tuple:
     if values is None:
         return ({}, {})
@@ -593,6 +800,22 @@ def cmd_green_procs(args: argparse.Namespace) -> int:
     try:
         shares = _parse_share_list(args.shares)
         script_args = _parse_green_script_args(args.script_args, len(args.scripts))
+        memory_shares = _parse_memory_share_list(
+            args.memory_shares, len(args.scripts)
+        )
+        if args.dry_run:
+            from .diagnostics import plan_green_partitions
+
+            plan = plan_green_partitions(shares, device=args.device)
+            payload = plan.to_dict()
+            for lane, script, item_args, memory_share in zip(
+                payload["lanes"], args.scripts, script_args, memory_shares
+            ):
+                lane["script"] = str(Path(script).expanduser().resolve())
+                lane["args"] = list(item_args)
+                lane["memory_share"] = memory_share
+            print(json.dumps(payload, sort_keys=True))
+            return 0
         from .green_process import run_green_process_scripts
 
         return run_green_process_scripts(
@@ -602,6 +825,7 @@ def cmd_green_procs(args: argparse.Namespace) -> int:
             device=args.device,
             startup_timeout=args.startup_timeout,
             quiet=bool(args.quiet),
+            memory_shares=memory_shares,
         )
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
@@ -654,14 +878,24 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "green-procs requires one --shares value per Python file"
                 )
             _parse_green_script_args(args.script_args, len(args.scripts))
+            _parse_memory_share_list(args.memory_shares, len(args.scripts))
             if args.startup_timeout <= 0:
                 raise ValueError("--startup-timeout must be positive")
         except ValueError as exc:
             parser.error(str(exc))
+
+    if args.command == 'launch' and args.filled is not None:
+        parser.error("--filled cannot be combined with YAML job launching")
     
     # Route to appropriate command
     if args.command == 'info':
         return cmd_info(args)
+    elif args.command == 'doctor':
+        return cmd_doctor(args)
+    elif args.command == 'launch':
+        return cmd_launch(args)
+    elif args.command == 'monitor':
+        return cmd_monitor(args)
     elif args.command == 'mps':
         return cmd_mps(args)
     elif args.command == 'green-run':

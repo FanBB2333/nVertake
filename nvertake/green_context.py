@@ -136,8 +136,17 @@ class _CudaDriver:
     def _configure(self) -> None:
         resource_pointer = ctypes.POINTER(_DeviceResource)
         self._cu_init = self._function("cuInit", [ctypes.c_uint])
+        self._cu_driver_get_version = self._function(
+            "cuDriverGetVersion", [ctypes.POINTER(ctypes.c_int)]
+        )
+        self._cu_device_get_count = self._function(
+            "cuDeviceGetCount", [ctypes.POINTER(ctypes.c_int)]
+        )
         self._cu_device_get = self._function(
             "cuDeviceGet", [ctypes.POINTER(ctypes.c_int), ctypes.c_int]
+        )
+        self._cu_device_get_name = self._function(
+            "cuDeviceGetName", [ctypes.POINTER(ctypes.c_char), ctypes.c_int, ctypes.c_int]
         )
         self._cu_device_get_attribute = self._function(
             "cuDeviceGetAttribute",
@@ -216,10 +225,29 @@ class _CudaDriver:
     def initialize(self) -> None:
         self._check("cuInit", self._cu_init, 0)
 
+    def driver_version(self) -> int:
+        version = ctypes.c_int()
+        self._check(
+            "cuDriverGetVersion", self._cu_driver_get_version, ctypes.byref(version)
+        )
+        return int(version.value)
+
+    def device_count(self) -> int:
+        count = ctypes.c_int()
+        self._check("cuDeviceGetCount", self._cu_device_get_count, ctypes.byref(count))
+        return int(count.value)
+
     def get_device(self, ordinal: int) -> int:
         device = ctypes.c_int()
         self._check("cuDeviceGet", self._cu_device_get, ctypes.byref(device), ordinal)
         return int(device.value)
+
+    def device_name(self, device: int) -> str:
+        buffer = ctypes.create_string_buffer(256)
+        self._check(
+            "cuDeviceGetName", self._cu_device_get_name, buffer, len(buffer), device
+        )
+        return buffer.value.decode("utf-8", errors="replace")
 
     def compute_capability_major(self, device: int) -> int:
         major = ctypes.c_int()

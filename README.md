@@ -8,6 +8,10 @@ resource-contention experiments.
 
 - **PyTorch Priority Hook**: Run common PyTorch training and inference workloads on a high-priority CUDA stream with little or no source change
 - **Multi-Process SM Shares**: Launch two, three, or more Python files together with a requested SM weight for each process
+- **YAML and Multi-GPU Launches**: Keep scripts, arguments, environments, working directories, and GPU placement in one job file
+- **Dry-Run Diagnostics**: Check driver support and preview exact SM counts without creating contexts or processes
+- **Per-Process PyTorch Memory Caps**: Pair SM shares with caching-allocator memory fractions
+- **Live Reports and Calibration**: Monitor local PIDs and adjust SM weights from workload-reported throughput
 - **Driver-Level SM Partitioning**: Run two cooperating in-process tasks in separate CUDA Green Contexts, including on WSL
 - **Weighted GPU Sharing**: Give cooperating CUDA processes different execution-resource ceilings through NVIDIA MPS
 - **Memory Reservation**: Reserve GPU memory to prevent other processes from claiming it
@@ -21,6 +25,120 @@ pip install -e .
 ```
 
 ## Usage
+
+### Check Driver Support and Preview Allocations
+
+Inspect the selected physical GPU without creating a CUDA context or launching a
+workload:
+
+```bash
+nvertake --device 0 doctor
+nvertake --device 0 doctor --shares 20,30,50 --json
+```
+
+`doctor` reports the CUDA driver capability, allocatable SM count, partition
+constraints, and the maximum number of SM resource groups. The maximum is a
+driver-reported partition limit, not a promise that memory and work-queue
+resources can sustain that many useful workloads.
+
+Preview a `green-procs` split with the same driver path used by a real launch:
+
+```bash
+nvertake --device 0 green-procs \
+  --shares 20,30,50 --dry-run \
+  first.py second.py third.py
+```
+
+The JSON result includes `starts_processes: false` and the exact SM count for
+each lane.
+
+### Launch YAML Jobs and Monitor Them
+
+[`examples/jobs.yaml`](examples/jobs.yaml) contains a complete single-GPU
+configuration. A shortened form is:
+
+```yaml
+version: 1
+logs_dir: ./runs
+defaults:
+  cwd: .
+  device: 0
+  env:
+    PYTHONUNBUFFERED: "1"
+jobs:
+  - name: background
+    script: worker.py
+    args: ["--batch-size", "32"]
+    sm_share: 30
+    memory_share: 0.30
+  - name: foreground
+    script: worker.py
+    args: ["--batch-size", "64"]
+    sm_share: 70
+    memory_share: 0.65
+```
+
+Validate scripts, directories, memory fractions, and driver-selected SM counts
+without starting anything, then launch:
+
+```bash
+nvertake launch jobs.yaml --dry-run
+nvertake launch jobs.yaml
+```
+
+Each launch creates a run directory with one log per job, one cooperative metric
+file per job, and a live/final `report.json`. The launcher prints the run id and
+report path. Inspect the latest local run, a particular run id, or a report file:
+
+```bash
+nvertake monitor
+nvertake monitor RUN_ID --watch
+nvertake monitor path/to/report.json --json
+```
+
+The monitor reports the job name, physical GPU, PID, assigned SM count,
+framebuffer memory, latest workload throughput, and state. Add `device: 0` or
+`device: 1` to each job to launch groups on both GPUs at the same time; see
+[`examples/jobs-multi-gpu.yaml`](examples/jobs-multi-gpu.yaml).
+
+Memory caps use `torch.cuda.set_per_process_memory_fraction` after the Green
+Context is bound and before the user script runs. Set `memory_share` on every
+job for a GPU; nVertake requires their sum to be at most `1.0`. This limits the
+PyTorch caching allocator. Direct CUDA allocations and allocations made by
+other libraries are outside this limit, and driver/context overhead still uses
+memory.
+
+### Calibrate Shares from Measured Throughput
+
+No driver counter can define application throughput for an arbitrary script.
+Jobs that opt into calibration therefore publish their own measurement:
+
+```python
+from nvertake import report_throughput
+
+report_throughput(samples_per_second, unit="samples/s")
+```
+
+Enable the short concurrent benchmark in YAML:
+
+```yaml
+calibration:
+  enabled: true
+  duration: 5
+  rounds: 2
+  tolerance: 0.05
+  damping: 0.5
+```
+
+During each round nVertake sets `NVERTAKE_CALIBRATION=1` and
+`NVERTAKE_CALIBRATION_SECONDS`, collects the latest value from every job,
+compares normalized throughput with each job's `target_share` (or `sm_share`),
+and applies a damped correction before the real launch. Optional
+`calibration_args` are appended only during those rounds. Calibration fails
+clearly when a job does not report a positive value or when units differ on the
+same GPU. Use calibration mode only when the script treats the calibration
+environment as a short, side-effect-safe benchmark. `--no-calibrate` skips it,
+and `--calibrate` enables it from the command line.
 
 ### Run with Elevated Priority
 
@@ -56,6 +174,7 @@ relative SM weight:
 ```bash
 nvertake --device 0 green-procs \
   --shares 20,30,50 \
+  --memory-shares 0.20,0.30,0.50 \
   --script-args '["--epochs", "5"]' \
   --script-args '["--batch-size", "64"]' \
   --script-args '[]' \
@@ -275,6 +394,9 @@ Options:
 Commands:
   run SCRIPT [ARGS...]  Run a Python script with elevated priority
   exec COMMAND [ARGS...] Run any command with elevated priority environment
+  doctor                Inspect Green Context driver capabilities
+  launch JOBS.yaml      Launch a YAML job file across one or more GPUs
+  monitor [RUN]         Inspect a live or completed JSON run report
   green-procs           Run Python files as weighted Green Context processes
   green-run             Run two callables in separate Green Context SM partitions
   info                  Show GPU information

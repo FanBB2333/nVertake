@@ -21,6 +21,7 @@ from nvertake.mps import (
     default_mps_paths,
     validate_active_thread_percentage,
 )
+from verification.run_mps_share_experiment import _wait_for_event
 
 
 def _mock_controller(*, started: bool) -> MagicMock:
@@ -273,6 +274,26 @@ class TestMPSController(unittest.TestCase):
         self.assertFalse(status.available)
         self.assertFalse(status.running)
         self.assertEqual(status.detail, "unsupported platform")
+
+
+class TestMPSShareExperiment(unittest.TestCase):
+    def test_worker_exit_includes_stderr_before_temporary_artifacts_are_removed(self):
+        with tempfile.TemporaryDirectory() as root:
+            event_path = Path(root) / "worker.jsonl"
+            stderr_path = Path(root) / "worker.stderr.log"
+            stderr_path.write_text("CUDA error 805\nserver diagnostic\n", encoding="utf-8")
+            process = MagicMock()
+            process.poll.return_value = 1
+            process.returncode = 1
+
+            with self.assertRaisesRegex(RuntimeError, "CUDA error 805"):
+                _wait_for_event(
+                    event_path,
+                    "ready",
+                    timeout=1.0,
+                    process=process,
+                    stderr_path=stderr_path,
+                )
 
 
 if __name__ == "__main__":

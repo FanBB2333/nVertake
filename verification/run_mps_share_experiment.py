@@ -45,6 +45,14 @@ def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
     ]
 
 
+def _tail_text(path: Path, line_count: int = 40) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    return "\n".join(lines[-line_count:])
+
+
 def _wait_for_event(
     path: Path,
     event: str,
@@ -59,7 +67,12 @@ def _wait_for_event(
             if record.get("event") == event:
                 return record
         if process is not None and process.poll() is not None:
-            detail = f"; see {stderr_path}" if stderr_path is not None else ""
+            detail = ""
+            if stderr_path is not None:
+                stderr_tail = _tail_text(stderr_path)
+                detail = f"\nstderr ({stderr_path}):"
+                if stderr_tail:
+                    detail += f"\n{stderr_tail}"
             raise RuntimeError(
                 f"Process exited with status {process.returncode} before event={event!r}{detail}"
             )

@@ -106,6 +106,30 @@ Interpretation:
 - a smaller throughput drop for the resident during the `with_nvertake` case is
   the signal you are looking for
 
+### 5. MPS Weighted-Share Experiment
+
+File: `verification/run_mps_share_experiment.py`
+
+Purpose:
+
+- launch two saturated GEMM processes through the public `nvertake` CLI
+- compare an equal `50/50` active-thread configuration with `25/75`
+- report the target process's share of combined measured TFLOP/s
+- verify that daemon startup, GPU remapping, client probing, and cleanup work
+  together
+
+Run on a native Linux host with NVIDIA MPS:
+
+```bash
+bash test/run_tests_summary.sh mps-share \
+  --device 0 \
+  --output verification/results/mps_share_latest.json
+```
+
+The experiment is not available in WSL. If the MPS client cannot connect, the
+CLI exits before starting the worker and includes the tail of `control.log` and
+`server.log` in the error.
+
 ## Recommended Workflow
 
 1. Start with `bash test/run_tests_summary.sh unit`.
@@ -113,6 +137,7 @@ Interpretation:
 3. If `nvidia-smi pmon` is available, run `bash test/run_tests_summary.sh pmon --device 0`.
 4. Run `bash test/run_tests_summary.sh overtake` to collect benchmark data you
    can publish in the root README.
+5. On a native Linux MPS host, run the weighted-share experiment.
 
 ## Notes
 

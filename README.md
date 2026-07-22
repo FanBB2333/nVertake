@@ -1,11 +1,12 @@
 # nVertake
 
-A Python package for low-intrusion CUDA stream priority, GPU memory reservation,
-and resource-contention experiments on NVIDIA GPUs.
+A Python package for NVIDIA MPS GPU sharing, low-intrusion CUDA stream priority,
+GPU memory reservation, and resource-contention experiments.
 
 ## Features
 
 - **PyTorch Priority Hook**: Run common PyTorch training and inference workloads on a high-priority CUDA stream with little or no source change
+- **Weighted GPU Sharing**: Give cooperating CUDA processes different execution-resource ceilings through NVIDIA MPS
 - **Memory Reservation**: Reserve GPU memory to prevent other processes from claiming it
 - **Dynamic Memory Management**: Maintain constant memory usage even during script execution
 - **Contention Experiments**: Measure whether a change actually improves saturated GPU resource share before relying on it
@@ -43,6 +44,46 @@ streams explicitly:
 ```bash
 nvertake --no-torch-priority run train.py
 ```
+
+### Give One CUDA Task More GPU Capacity
+
+Launch every competing task through nVertake and assign a lower active-thread
+ceiling to the background task than to the target task:
+
+```bash
+# Background task: at most 25% of the GPU's active threads.
+nvertake --device 0 --gpu-share 25 --mps-priority below-normal \
+  exec python background.py
+
+# Target task: at most 75%, with normal MPS client priority.
+nvertake --device 0 --gpu-share 75 --mps-priority normal \
+  run target.py --epochs 100
+```
+
+`--gpu-share` starts or reuses an nVertake-managed NVIDIA MPS daemon for the
+selected physical GPU. The daemon maps that GPU to logical CUDA device 0 inside
+each client. nVertake performs a short CUDA connection probe before launching
+the task, so driver/MPS incompatibilities fail before user code starts.
+
+The percentage is an execution-resource ceiling, not an exact wall-clock time
+guarantee. For predictable contention, assign every cooperating process an
+explicit share and keep the total near or below 100. A process can use less than
+its ceiling when its workload cannot saturate the assigned resources.
+
+The limit is fixed when a CUDA context is created. To change the share of a
+running task, stop and relaunch that task with a new value.
+
+Inspect and stop the per-device daemon with:
+
+```bash
+nvertake --device 0 mps status
+nvertake --device 0 mps stop
+```
+
+`mps stop` refuses to stop a daemon with active clients. `--force` is available
+for intentional interruption. `--filled` cannot be combined with MPS sharing;
+memory reservation would run as a separate, unrestricted CUDA context and make
+the requested compute split misleading.
 
 ### Memory Reservation
 
@@ -110,6 +151,8 @@ Options:
   --device, -d GPU_ID   GPU device to use (default: 0)
   --nice, -n VALUE      Nice value for CPU priority (default: -10)
   --no-torch-priority   Disable PyTorch high-priority stream auto-injection
+  --gpu-share PERCENT   MPS active-thread ceiling (1-100)
+  --mps-priority LEVEL  MPS priority hint: normal or below-normal
   --quiet, -q           Suppress info messages
   --version, -V         Show version
 
@@ -117,6 +160,7 @@ Commands:
   run SCRIPT [ARGS...]  Run a Python script with elevated priority
   exec COMMAND [ARGS...] Run any command with elevated priority environment
   info                  Show GPU information
+  mps ACTION            Start, inspect, or stop the per-device MPS daemon
 ```
 
 ## How It Works
@@ -135,6 +179,22 @@ stream hook can still be used inside your own process.
 
 Code that manually switches CUDA streams, launches work from other Python
 threads, or uses non-PyTorch CUDA APIs may need explicit integration.
+
+### MPS GPU Sharing
+
+1. The MPS daemon is started with the selected physical GPU UUID and a 100%
+   daemon-level ceiling.
+2. Each child receives the same per-device MPS pipe directory and its own
+   `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` value.
+3. `CUDA_VISIBLE_DEVICES` is removed from clients because MPS already remaps the
+   daemon's selected GPU to logical device 0.
+4. `CUDA_MPS_CLIENT_PRIORITY` optionally maps a whole client to normal or
+   below-normal priority. NVIDIA defines this as a scheduling hint.
+
+This feature requires native Linux, a Volta-or-newer NVIDIA GPU, and
+`nvidia-cuda-mps-control`. CUDA on WSL does not expose the Linux MPS daemon, so
+`--gpu-share` reports the platform limitation there. The existing stream
+priority hook remains available without MPS.
 
 ### Memory Reservation
 
@@ -158,6 +218,8 @@ repository does not depend on FakeGPU for its main test flow.
   `python3 verification/run_contention_util_experiment.py --output verification/results/contention_util_<date>.json`
 - Own-process-only contention variants:
   `python3 verification/run_own_process_variants_experiment.py --output verification/results/own_process_variants_<date>.json`
+- MPS 50/50 vs 25/75 share experiment:
+  `bash test/run_tests_summary.sh mps-share --device 0 --output verification/results/mps_share_<date>.json`
 - Plot-ready result summary:
   `verification/results/resource_contention_summary_20260509.json`
 
@@ -231,6 +293,7 @@ own real-GPU run if you want to publish benchmark results.
 - PyTorch
 - NVIDIA GPU with CUDA support
 - psutil
+- For `--gpu-share`: native Linux, Volta or newer, and NVIDIA MPS utilities
 
 ## License
 

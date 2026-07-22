@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from . import __version__
 from .memory import MemoryManager, fill_gpu_memory
+from .mps import MPSControlError, MPSController
 from .scheduler import PriorityScheduler
 from .utils import logger, get_gpu_memory, get_gpu_count, validate_device
 
@@ -29,10 +30,18 @@ Examples:
   # Run a launcher such as torchrun with the same priority environment
   nvertake exec torchrun --nproc_per_node=4 train.py
 
+  # Give two cooperating MPS tasks 25% and 75% active-thread ceilings
+  nvertake --gpu-share 25 exec python background.py
+  nvertake --gpu-share 75 run target.py
+
+  # Inspect or stop the per-device MPS daemon
+  nvertake --device 0 mps status
+  nvertake --device 0 mps stop
+
   # Disable PyTorch high-priority stream auto-injection
   nvertake --no-torch-priority run train.py
 
-  # Run with 95%% memory reservation
+  # Run with 95% memory reservation
   nvertake --filled 0.95 run train.py
 
   # Just fill GPU memory (standalone mode)
@@ -85,6 +94,37 @@ Examples:
         action='store_true',
         help='Disable PyTorch high-priority stream auto-injection for `run`/`exec`.',
     )
+
+    parser.add_argument(
+        '--gpu-share', '--mps-active-thread-percentage',
+        dest='gpu_share',
+        type=int,
+        default=None,
+        metavar='PERCENT',
+        help='Enable NVIDIA MPS and cap this client to 1-100%% of active threads. '
+             'Launch every competing task with an explicit share.',
+    )
+
+    parser.add_argument(
+        '--mps-priority',
+        choices=('normal', 'below-normal'),
+        default=None,
+        help='MPS client priority hint. This is not an execution-order guarantee.',
+    )
+
+    parser.add_argument(
+        '--mps-pipe-directory',
+        default=None,
+        metavar='PATH',
+        help=argparse.SUPPRESS,
+    )
+
+    parser.add_argument(
+        '--mps-log-directory',
+        default=None,
+        metavar='PATH',
+        help=argparse.SUPPRESS,
+    )
     
     # Subcommand for running scripts
     subparsers = parser.add_subparsers(dest='command', help='Commands')
@@ -114,9 +154,24 @@ Examples:
     )
     
     # Info subcommand
-    info_parser = subparsers.add_parser(
+    subparsers.add_parser(
         'info',
         help='Show GPU information',
+    )
+
+    mps_parser = subparsers.add_parser(
+        'mps',
+        help='Manage the per-device NVIDIA MPS daemon',
+    )
+    mps_parser.add_argument(
+        'mps_action',
+        choices=('start', 'status', 'stop'),
+        help='Daemon action',
+    )
+    mps_parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Allow `mps stop` while client processes are active',
     )
     
     return parser
@@ -156,9 +211,48 @@ def configure_auto_priority_env(
     return env
 
 
+def _mps_requested(args: argparse.Namespace) -> bool:
+    return args.gpu_share is not None or args.mps_priority is not None
+
+
+def _mps_controller(args: argparse.Namespace, *, device: int) -> MPSController:
+    return MPSController(
+        device=device,
+        pipe_directory=args.mps_pipe_directory,
+        log_directory=args.mps_log_directory,
+    )
+
+
 def _build_child_env(args: argparse.Namespace, *, device: int) -> dict:
     env = os.environ.copy()
-    env['CUDA_VISIBLE_DEVICES'] = str(device)
+    if _mps_requested(args):
+        controller = _mps_controller(args, device=device)
+        started = controller.ensure_started()
+        controller.client_environment(
+            env,
+            active_thread_percentage=args.gpu_share,
+            client_priority=args.mps_priority,
+        )
+        try:
+            probe = controller.probe_client(env)
+        except (MPSControlError, OSError, subprocess.SubprocessError):
+            if started:
+                try:
+                    controller.stop()
+                except MPSControlError as cleanup_error:
+                    logger.warning("Failed to stop MPS after client probe error: %s", cleanup_error)
+            raise
+        action = "started" if started else "reused"
+        share = args.gpu_share if args.gpu_share is not None else 100
+        logger.info(
+            "MPS %s for GPU %s; client share=%s%%, visible SMs=%s",
+            action,
+            device,
+            share,
+            probe.get("sm_count", "unknown"),
+        )
+    else:
+        env['CUDA_VISIBLE_DEVICES'] = str(device)
     if not args.no_torch_priority:
         configure_auto_priority_env(env, device=device, quiet=bool(args.quiet))
     return env
@@ -200,7 +294,7 @@ def cmd_run(
     script_args = args.script_args or []
     
     # Validate device
-    if not validate_device(device):
+    if not _mps_requested(args) and not validate_device(device):
         logger.error(f"Invalid GPU device: {device}")
         return 1
     
@@ -260,7 +354,7 @@ def cmd_exec(
         logger.error("No command provided for `exec`")
         return 1
 
-    if not validate_device(device):
+    if not _mps_requested(args) and not validate_device(device):
         logger.error(f"Invalid GPU device: {device}")
         return 1
 
@@ -309,6 +403,40 @@ def cmd_filled_only(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mps(args: argparse.Namespace) -> int:
+    """Start, inspect, or stop the per-device NVIDIA MPS daemon."""
+    controller = _mps_controller(args, device=args.device)
+    try:
+        if args.mps_action == 'start':
+            started = controller.start()
+            print("MPS daemon started." if started else "MPS daemon is already running.")
+            print(f"Pipe directory: {controller.paths.pipe_directory}")
+            print(f"Log directory:  {controller.paths.log_directory}")
+            return 0
+
+        if args.mps_action == 'stop':
+            stopped = controller.stop(force=bool(args.force))
+            print("MPS daemon stopped." if stopped else "MPS daemon is not running.")
+            return 0
+
+        status = controller.status()
+        availability = "available" if status.available else "unavailable"
+        state = "running" if status.running else "stopped"
+        print(f"MPS: {state} ({availability})")
+        print(f"Pipe directory: {status.pipe_directory}")
+        print(f"Log directory:  {status.log_directory}")
+        if status.server_pids:
+            print("Server PIDs: " + ", ".join(str(pid) for pid in status.server_pids))
+        if status.client_pids:
+            print("Client PIDs: " + ", ".join(str(pid) for pid in status.client_pids))
+        if status.detail:
+            print(f"Detail: {status.detail}")
+        return 0 if status.available else 1
+    except MPSControlError as exc:
+        logger.error(str(exc))
+        return 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Main entry point for nVertake CLI."""
     parser = create_parser()
@@ -321,10 +449,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Validate --filled range
     if args.filled is not None and not (0.0 < args.filled <= 1.0):
         parser.error("--filled must be between 0.0 and 1.0")
+
+    if args.gpu_share is not None and not (1 <= args.gpu_share <= 100):
+        parser.error("--gpu-share must be an integer between 1 and 100")
+
+    if _mps_requested(args) and args.command not in {'run', 'exec'}:
+        parser.error("--gpu-share/--mps-priority can only be used with `run` or `exec`")
+
+    if _mps_requested(args) and args.filled is not None:
+        parser.error("--filled cannot be combined with NVIDIA MPS sharing")
     
     # Route to appropriate command
     if args.command == 'info':
         return cmd_info(args)
+    elif args.command == 'mps':
+        return cmd_mps(args)
     elif args.command == 'run':
         return cmd_run(args, fill_ratio=args.filled)
     elif args.command == 'exec':

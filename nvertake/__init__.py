@@ -14,6 +14,9 @@ __all__ = [
     "inject_priority",
     "enable_torch_priority",
     "install_torch_priority_import_hook",
+    "MPSController",
+    "MPSControlError",
+    "MPSStatus",
     "MemoryManager",
     "fill_gpu_memory",
 ]
@@ -46,6 +49,15 @@ def __getattr__(name):
         return {
             "enable_torch_priority": enable_torch_priority,
             "install_torch_priority_import_hook": install_torch_priority_import_hook,
+        }[name]
+
+    if name in {"MPSController", "MPSControlError", "MPSStatus"}:
+        from .mps import MPSController, MPSControlError, MPSStatus
+
+        return {
+            "MPSController": MPSController,
+            "MPSControlError": MPSControlError,
+            "MPSStatus": MPSStatus,
         }[name]
 
     raise AttributeError(f"module 'nvertake' has no attribute {name!r}")

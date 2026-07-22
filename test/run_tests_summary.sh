@@ -16,6 +16,7 @@ set -euo pipefail
 #   bash test/run_tests_summary.sh strict-pmon --device 0
 #   bash test/run_tests_summary.sh report --device 0
 #   bash test/run_tests_summary.sh overtake
+#   bash test/run_tests_summary.sh mps-share --device 0
 #
 #   # Or forward any args directly to the Python runner:
 #   bash test/run_tests_summary.sh --json test/test_summary.json
@@ -35,13 +36,14 @@ Usage:
 
 Modes:
   all          Run all tests (default; GPU tests skipped unless enabled)
-  unit         Run CPU-only unit tests (test_nvertake.py)
+  unit         Run CPU-only unit tests (test_nvertake*.py)
   gpu          Run real-GPU tests with --enable-gpu-tests
   pmon         Run real-GPU tests with --enable-gpu-tests --enable-pmon-tests
   strict       Run stricter real-GPU tests with --enable-gpu-tests --strict-gpu-priority
   strict-pmon  Run stricter real-GPU tests with --enable-gpu-tests --enable-pmon-tests --strict-gpu-pmon
   report       Run tests with --enable-gpu-tests --print-markdown-table
   overtake     Run the resident-vs-invader benchmark on a real CUDA GPU
+  mps-share    Run the NVIDIA MPS 50/50 vs 25/75 share experiment
 
 Any extra args are forwarded to test/run_tests_summary.py.
 Examples:
@@ -63,7 +65,7 @@ case "${MODE}" in
   all)
     ;;
   unit)
-    set -- --pattern test_nvertake.py "$@"
+    set -- --pattern 'test_nvertake*.py' "$@"
     ;;
   gpu)
     set -- --enable-gpu-tests "$@"
@@ -82,6 +84,9 @@ case "${MODE}" in
     ;;
   overtake)
     exec bash "${REPO_ROOT}/test/run_overtake_benchmark.sh" "$@"
+    ;;
+  mps-share)
+    exec "${PYTHON_BIN}" "${REPO_ROOT}/verification/run_mps_share_experiment.py" "$@"
     ;;
   help|-h|--help)
     usage

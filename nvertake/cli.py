@@ -3,6 +3,8 @@ Command line interface for nVertake.
 """
 
 import argparse
+import json
+import math
 import os
 import subprocess
 import sys
@@ -33,6 +35,9 @@ Examples:
   # Give two cooperating MPS tasks 25% and 75% active-thread ceilings
   nvertake --gpu-share 25 exec python background.py
   nvertake --gpu-share 75 run target.py
+
+  # Give two in-process Python tasks separate 25%/75% SM partitions
+  nvertake --device 0 green-run --shares 25,75 --task jobs:background --task jobs:target
 
   # Inspect or stop the per-device MPS daemon
   nvertake --device 0 mps status
@@ -172,6 +177,33 @@ Examples:
         '--force',
         action='store_true',
         help='Allow `mps stop` while client processes are active',
+    )
+
+    green_parser = subparsers.add_parser(
+        'green-run',
+        help='Run two Python callables in separate CUDA Green Context SM partitions',
+    )
+    green_parser.add_argument(
+        '--shares',
+        default='25,75',
+        metavar='LOW,HIGH',
+        help='Relative SM shares for the two tasks (default: 25,75)',
+    )
+    green_parser.add_argument(
+        '--task',
+        dest='green_tasks',
+        action='append',
+        required=True,
+        metavar='MODULE:CALLABLE',
+        help='Python callable to run; specify exactly twice in lane order',
+    )
+    green_parser.add_argument(
+        '--task-kwargs',
+        dest='green_task_kwargs',
+        action='append',
+        default=None,
+        metavar='JSON',
+        help='JSON object of keyword arguments; omit entirely or specify exactly twice',
     )
     
     return parser
@@ -437,6 +469,59 @@ def cmd_mps(args: argparse.Namespace) -> int:
         return 1
 
 
+def _parse_green_shares(value: str) -> tuple:
+    parts = value.split(',')
+    if len(parts) != 2:
+        raise ValueError("--shares must contain exactly two comma-separated numbers")
+    try:
+        shares = tuple(float(part) for part in parts)
+    except ValueError as exc:
+        raise ValueError("--shares must contain two numbers") from exc
+    if any(not math.isfinite(share) or share <= 0 for share in shares):
+        raise ValueError("--shares values must be finite and positive")
+    return shares
+
+
+def _parse_green_task_kwargs(values: Optional[List[str]]) -> tuple:
+    if values is None:
+        return ({}, {})
+    if len(values) != 2:
+        raise ValueError("--task-kwargs must be omitted or specified exactly twice")
+    parsed = []
+    for index, value in enumerate(values):
+        try:
+            item = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"--task-kwargs #{index + 1} is not valid JSON: {exc}") from exc
+        if not isinstance(item, dict):
+            raise ValueError(f"--task-kwargs #{index + 1} must be a JSON object")
+        parsed.append(item)
+    return tuple(parsed)
+
+
+def cmd_green_run(args: argparse.Namespace) -> int:
+    """Run two Python callables in driver-partitioned CUDA Green Contexts."""
+    try:
+        shares = _parse_green_shares(args.shares)
+        task_kwargs = _parse_green_task_kwargs(args.green_task_kwargs)
+        from .green_context import run_green_tasks
+
+        result = run_green_tasks(
+            args.green_tasks,
+            device=args.device,
+            shares=shares,
+            task_kwargs=task_kwargs,
+        )
+        print(json.dumps(result.to_dict(), sort_keys=True))
+        return 0
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        return 130
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("Green Context run failed: %s", exc)
+        return 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Main entry point for nVertake CLI."""
     parser = create_parser()
@@ -458,12 +543,25 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if _mps_requested(args) and args.filled is not None:
         parser.error("--filled cannot be combined with NVIDIA MPS sharing")
+
+    if args.command == 'green-run':
+        if args.filled is not None:
+            parser.error("--filled cannot be combined with CUDA Green Context sharing")
+        if len(args.green_tasks) != 2:
+            parser.error("green-run requires exactly two --task arguments")
+        try:
+            _parse_green_shares(args.shares)
+            _parse_green_task_kwargs(args.green_task_kwargs)
+        except ValueError as exc:
+            parser.error(str(exc))
     
     # Route to appropriate command
     if args.command == 'info':
         return cmd_info(args)
     elif args.command == 'mps':
         return cmd_mps(args)
+    elif args.command == 'green-run':
+        return cmd_green_run(args)
     elif args.command == 'run':
         return cmd_run(args, fill_ratio=args.filled)
     elif args.command == 'exec':

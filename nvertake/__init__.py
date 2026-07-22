@@ -17,6 +17,13 @@ __all__ = [
     "MPSController",
     "MPSControlError",
     "MPSStatus",
+    "GreenContextExecutor",
+    "GreenContextError",
+    "GreenContextUnavailableError",
+    "GreenContextLane",
+    "GreenRunResult",
+    "current_green_context_lane",
+    "run_green_tasks",
     "MemoryManager",
     "fill_gpu_memory",
 ]
@@ -58,6 +65,35 @@ def __getattr__(name):
             "MPSController": MPSController,
             "MPSControlError": MPSControlError,
             "MPSStatus": MPSStatus,
+        }[name]
+
+    if name in {
+        "GreenContextExecutor",
+        "GreenContextError",
+        "GreenContextUnavailableError",
+        "GreenContextLane",
+        "GreenRunResult",
+        "current_green_context_lane",
+        "run_green_tasks",
+    }:
+        from .green_context import (
+            GreenContextError,
+            GreenContextExecutor,
+            GreenContextLane,
+            GreenContextUnavailableError,
+            GreenRunResult,
+            current_green_context_lane,
+            run_green_tasks,
+        )
+
+        return {
+            "GreenContextExecutor": GreenContextExecutor,
+            "GreenContextError": GreenContextError,
+            "GreenContextUnavailableError": GreenContextUnavailableError,
+            "GreenContextLane": GreenContextLane,
+            "GreenRunResult": GreenRunResult,
+            "current_green_context_lane": current_green_context_lane,
+            "run_green_tasks": run_green_tasks,
         }[name]
 
     raise AttributeError(f"module 'nvertake' has no attribute {name!r}")

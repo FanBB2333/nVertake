@@ -1,0 +1,126 @@
+{
+  "batch_iters": 4,
+  "cases": [
+    {
+      "background": {
+        "actual_sm_share": 0.5,
+        "checksum": 14.9921875,
+        "device_name": "NVIDIA GeForce RTX 3090 Ti",
+        "elapsed_seconds": 3.0115069550229236,
+        "iterations": 860,
+        "lane": 0,
+        "requested_share": 50.0,
+        "role": "background",
+        "sm_count": 42,
+        "tflops_per_second": 39.24862261691847,
+        "torch_cuda": "13.0",
+        "torch_version": "2.12.1+cu130"
+      },
+      "case_id": "equal_50_50",
+      "combined_tflops_per_second": 78.50033689125561,
+      "compute_capability_major": 8,
+      "lanes": [
+        {
+          "actual_sm_share": 0.5,
+          "index": 0,
+          "requested_share": 50.0,
+          "sm_count": 42,
+          "total_sm_count": 84
+        },
+        {
+          "actual_sm_share": 0.5,
+          "index": 1,
+          "requested_share": 50.0,
+          "sm_count": 42,
+          "total_sm_count": 84
+        }
+      ],
+      "requested_shares": [
+        50.0,
+        50.0
+      ],
+      "target": {
+        "actual_sm_share": 0.5,
+        "checksum": 113.75,
+        "device_name": "NVIDIA GeForce RTX 3090 Ti",
+        "elapsed_seconds": 3.0112697539734654,
+        "iterations": 860,
+        "lane": 1,
+        "requested_share": 50.0,
+        "role": "target",
+        "sm_count": 42,
+        "tflops_per_second": 39.251714274337154,
+        "torch_cuda": "13.0",
+        "torch_version": "2.12.1+cu130"
+      },
+      "target_throughput_share": 0.5000196920009591,
+      "total_sm_count": 84
+    },
+    {
+      "background": {
+        "actual_sm_share": 0.23809523809523808,
+        "checksum": -51.25,
+        "device_name": "NVIDIA GeForce RTX 3090 Ti",
+        "elapsed_seconds": 3.024376962974202,
+        "iterations": 436,
+        "lane": 0,
+        "requested_share": 25.0,
+        "role": "background",
+        "sm_count": 20,
+        "tflops_per_second": 19.81346387947049,
+        "torch_cuda": "13.0",
+        "torch_version": "2.12.1+cu130"
+      },
+      "case_id": "target_75_background_25",
+      "combined_tflops_per_second": 83.08696201242657,
+      "compute_capability_major": 8,
+      "lanes": [
+        {
+          "actual_sm_share": 0.23809523809523808,
+          "index": 0,
+          "requested_share": 25.0,
+          "sm_count": 20,
+          "total_sm_count": 84
+        },
+        {
+          "actual_sm_share": 0.7619047619047619,
+          "index": 1,
+          "requested_share": 75.0,
+          "sm_count": 64,
+          "total_sm_count": 84
+        }
+      ],
+      "requested_shares": [
+        25.0,
+        75.0
+      ],
+      "target": {
+        "actual_sm_share": 0.7619047619047619,
+        "checksum": -72.6875,
+        "device_name": "NVIDIA GeForce RTX 3090 Ti",
+        "elapsed_seconds": 3.0062430119724013,
+        "iterations": 1384,
+        "lane": 1,
+        "requested_share": 75.0,
+        "role": "target",
+        "sm_count": 64,
+        "tflops_per_second": 63.27349813295608,
+        "torch_cuda": "13.0",
+        "torch_version": "2.12.1+cu130"
+      },
+      "target_throughput_share": 0.7615334175233514,
+      "total_sm_count": 84
+    }
+  ],
+  "comparison": {
+    "target_tflops_ratio": 1.6119932416384783,
+    "target_throughput_share_delta_percentage_points": 26.151372552239227
+  },
+  "device": 0,
+  "duration_seconds": 3.0,
+  "host": "DESKTOP-GEM12",
+  "matrix_size": 4096,
+  "platform": "Linux-6.18.33.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "timestamp_utc": "2026-07-22T10:26:01.005819+00:00",
+  "warmup_iters": 4
+}

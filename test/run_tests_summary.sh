@@ -17,6 +17,7 @@ set -euo pipefail
 #   bash test/run_tests_summary.sh report --device 0
 #   bash test/run_tests_summary.sh overtake
 #   bash test/run_tests_summary.sh mps-share --device 0
+#   bash test/run_tests_summary.sh green-share --device 0
 #
 #   # Or forward any args directly to the Python runner:
 #   bash test/run_tests_summary.sh --json test/test_summary.json
@@ -44,6 +45,7 @@ Modes:
   report       Run tests with --enable-gpu-tests --print-markdown-table
   overtake     Run the resident-vs-invader benchmark on a real CUDA GPU
   mps-share    Run the NVIDIA MPS 50/50 vs 25/75 share experiment
+  green-share  Run the CUDA Green Context 50/50 vs 25/75 SM experiment
 
 Any extra args are forwarded to test/run_tests_summary.py.
 Examples:
@@ -87,6 +89,9 @@ case "${MODE}" in
     ;;
   mps-share)
     exec "${PYTHON_BIN}" "${REPO_ROOT}/verification/run_mps_share_experiment.py" "$@"
+    ;;
+  green-share)
+    exec "${PYTHON_BIN}" "${REPO_ROOT}/verification/run_green_context_share_experiment.py" "$@"
     ;;
   help|-h|--help)
     usage

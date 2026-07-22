@@ -12,6 +12,7 @@ File: `test/test_nvertake.py`
 
 Scope:
 - CLI argument parsing
+- Green Context partition calculation and concurrent task wiring
 - scheduler wiring
 - PyTorch auto-priority env injection
 - memory target calculations
@@ -106,7 +107,30 @@ Interpretation:
 - a smaller throughput drop for the resident during the `with_nvertake` case is
   the signal you are looking for
 
-### 5. MPS Weighted-Share Experiment
+### 5. Green Context SM-Share Experiment
+
+File: `verification/run_green_context_share_experiment.py`
+
+Purpose:
+
+- run two saturated PyTorch GEMM callables in one process
+- compare driver-selected SM allocations for requested `50/50` and `25/75`
+- report each lane's exact SM count and measured throughput
+- exercise context creation, per-thread binding, synchronization, and cleanup
+
+Run on a CUDA system whose driver exposes Green Context APIs:
+
+```bash
+bash test/run_tests_summary.sh green-share \
+  --device 0 \
+  --output verification/results/green_share_latest.json
+```
+
+This experiment works on the tested native Linux and WSL hosts. Exact TFLOP/s
+ratios are workload- and architecture-dependent even when the SM partition is
+fixed.
+
+### 6. MPS Weighted-Share Experiment
 
 File: `verification/run_mps_share_experiment.py`
 
@@ -137,7 +161,8 @@ CLI exits before starting the worker and includes the tail of `control.log` and
 3. If `nvidia-smi pmon` is available, run `bash test/run_tests_summary.sh pmon --device 0`.
 4. Run `bash test/run_tests_summary.sh overtake` to collect benchmark data you
    can publish in the root README.
-5. On a native Linux MPS host, run the weighted-share experiment.
+5. Run the Green Context SM-share experiment.
+6. On a native Linux MPS host, run the MPS weighted-share experiment.
 
 ## Notes
 

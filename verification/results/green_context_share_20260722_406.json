@@ -1,0 +1,126 @@
+{
+  "batch_iters": 4,
+  "cases": [
+    {
+      "background": {
+        "actual_sm_share": 0.509090909090909,
+        "checksum": -44.21875,
+        "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+        "elapsed_seconds": 3.0036632840055972,
+        "iterations": 1956,
+        "lane": 0,
+        "requested_share": 50.0,
+        "role": "background",
+        "sm_count": 56,
+        "tflops_per_second": 89.5009085814464,
+        "torch_cuda": "12.8",
+        "torch_version": "2.8.0+cu128"
+      },
+      "case_id": "equal_50_50",
+      "combined_tflops_per_second": 176.2192364705635,
+      "compute_capability_major": 12,
+      "lanes": [
+        {
+          "actual_sm_share": 0.509090909090909,
+          "index": 0,
+          "requested_share": 50.0,
+          "sm_count": 56,
+          "total_sm_count": 110
+        },
+        {
+          "actual_sm_share": 0.4909090909090909,
+          "index": 1,
+          "requested_share": 50.0,
+          "sm_count": 54,
+          "total_sm_count": 110
+        }
+      ],
+      "requested_shares": [
+        50.0,
+        50.0
+      ],
+      "target": {
+        "actual_sm_share": 0.4909090909090909,
+        "checksum": -66.5,
+        "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+        "elapsed_seconds": 3.0049501890316606,
+        "iterations": 1896,
+        "lane": 1,
+        "requested_share": 50.0,
+        "role": "target",
+        "sm_count": 54,
+        "tflops_per_second": 86.7183278891171,
+        "torch_cuda": "12.8",
+        "torch_version": "2.8.0+cu128"
+      },
+      "target_throughput_share": 0.49210477599364105,
+      "total_sm_count": 110
+    },
+    {
+      "background": {
+        "actual_sm_share": 0.21818181818181817,
+        "checksum": -13.5,
+        "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+        "elapsed_seconds": 3.008293756050989,
+        "iterations": 864,
+        "lane": 0,
+        "requested_share": 25.0,
+        "role": "background",
+        "sm_count": 24,
+        "tflops_per_second": 39.47329131703164,
+        "torch_cuda": "12.8",
+        "torch_version": "2.8.0+cu128"
+      },
+      "case_id": "target_75_background_25",
+      "combined_tflops_per_second": 179.9190480011149,
+      "compute_capability_major": 12,
+      "lanes": [
+        {
+          "actual_sm_share": 0.21818181818181817,
+          "index": 0,
+          "requested_share": 25.0,
+          "sm_count": 24,
+          "total_sm_count": 110
+        },
+        {
+          "actual_sm_share": 0.7818181818181819,
+          "index": 1,
+          "requested_share": 75.0,
+          "sm_count": 86,
+          "total_sm_count": 110
+        }
+      ],
+      "requested_shares": [
+        25.0,
+        75.0
+      ],
+      "target": {
+        "actual_sm_share": 0.7818181818181819,
+        "checksum": 67.75,
+        "device_name": "NVIDIA RTX PRO 5000 72GB Blackwell",
+        "elapsed_seconds": 3.0023171878419816,
+        "iterations": 3068,
+        "lane": 1,
+        "requested_share": 75.0,
+        "role": "target",
+        "sm_count": 86,
+        "tflops_per_second": 140.44575668408325,
+        "torch_cuda": "12.8",
+        "torch_version": "2.8.0+cu128"
+      },
+      "target_throughput_share": 0.7806052680048249,
+      "total_sm_count": 110
+    }
+  ],
+  "comparison": {
+    "target_tflops_ratio": 1.6195625550306394,
+    "target_throughput_share_delta_percentage_points": 28.850049201118384
+  },
+  "device": 0,
+  "duration_seconds": 3.0,
+  "host": "406",
+  "matrix_size": 4096,
+  "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+  "timestamp_utc": "2026-07-22T10:26:01.041707+00:00",
+  "warmup_iters": 4
+}

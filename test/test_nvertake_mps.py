@@ -97,7 +97,18 @@ class TestMPSConfiguration(unittest.TestCase):
             with self.assertRaisesRegex(MPSControlError, "probe failed"):
                 _build_child_env(args, device=0)
 
-        controller.stop.assert_called_once_with()
+        controller.stop.assert_called_once_with(force=True)
+
+    def test_child_env_preserves_probe_error_when_cleanup_fails(self):
+        args = create_parser().parse_args(["--gpu-share", "75", "run", "train.py"])
+        controller = _mock_controller(started=True)
+        controller.probe_client.side_effect = MPSControlError("probe failed")
+        controller.stop.side_effect = MPSControlError("cleanup failed")
+
+        with patch("nvertake.cli.MPSController", return_value=controller):
+            with self.assertLogs("nvertake", level="WARNING"):
+                with self.assertRaisesRegex(MPSControlError, "probe failed"):
+                    _build_child_env(args, device=0)
 
     def test_child_env_keeps_preexisting_daemon_when_probe_fails(self):
         args = create_parser().parse_args(["--gpu-share", "75", "run", "train.py"])
@@ -214,6 +225,46 @@ class TestMPSController(unittest.TestCase):
                 stack.enter_context(patch.object(controller, "status", return_value=status))
                 with self.assertRaisesRegex(MPSControlError, "200, 201"):
                     controller.stop()
+
+    def test_force_stop_bypasses_client_query_and_terminates_wedged_daemon(self):
+        with tempfile.TemporaryDirectory() as root:
+            controller = self._controller(root)
+            managed = (
+                (100, "nvidia-cuda-mps-server"),
+                (101, "nvidia-cuda-mps-control"),
+            )
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch.object(
+                        controller,
+                        "_ensure_supported",
+                        return_value="/usr/bin/nvidia-cuda-mps-control",
+                    )
+                )
+                stack.enter_context(patch.object(controller, "is_running", return_value=True))
+                stack.enter_context(
+                    patch.object(controller, "_managed_processes", return_value=managed)
+                )
+                stack.enter_context(
+                    patch.object(
+                        controller,
+                        "_run_control",
+                        side_effect=MPSControlError("control timed out"),
+                    )
+                )
+                terminate = stack.enter_context(
+                    patch.object(
+                        controller,
+                        "_force_terminate_managed_processes",
+                        return_value=True,
+                    )
+                )
+                status = stack.enter_context(patch.object(controller, "status"))
+
+                self.assertTrue(controller.stop(force=True))
+
+            status.assert_not_called()
+            terminate.assert_called_once_with(managed)
 
     def test_status_reports_platform_limitation(self):
         controller = MPSController()

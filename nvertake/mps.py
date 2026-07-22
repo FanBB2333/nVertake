@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -190,15 +191,21 @@ class MPSController:
         timeout: float = 5.0,
     ) -> subprocess.CompletedProcess[str]:
         binary = self._resolved_control_binary() or self.control_binary
-        return subprocess.run(
-            [binary],
-            input=command.rstrip("\n") + "\n",
-            capture_output=True,
-            text=True,
-            env=self._control_env(),
-            timeout=timeout,
-            check=False,
-        )
+        try:
+            return subprocess.run(
+                [binary],
+                input=command.rstrip("\n") + "\n",
+                capture_output=True,
+                text=True,
+                env=self._control_env(),
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise MPSControlError(
+                f"NVIDIA MPS control command {command!r} failed: {exc}"
+                + self._log_diagnostics()
+            ) from exc
 
     @staticmethod
     def _control_succeeded(completed: subprocess.CompletedProcess[str]) -> bool:
@@ -210,9 +217,102 @@ class MPSController:
             return False
         try:
             completed = self._run_control("get_server_list", timeout=2.0)
-        except (OSError, subprocess.SubprocessError):
-            return False
+        except MPSControlError:
+            # A wedged server can prevent the control command from completing.
+            # A validated pidfile still means that the daemon must be reused or
+            # explicitly stopped instead of starting a competing daemon.
+            return bool(self._managed_processes())
         return self._control_succeeded(completed)
+
+    @staticmethod
+    def _matching_process(pid: int, expected_name: str) -> bool:
+        """Return whether pid belongs to this user and has the expected executable."""
+        if pid <= 0 or platform.system() != "Linux":
+            return False
+        proc = Path("/proc") / str(pid)
+        try:
+            status = (proc / "status").read_text(encoding="utf-8", errors="replace")
+            cmdline = (proc / "cmdline").read_bytes().split(b"\0", 1)[0]
+        except OSError:
+            return False
+
+        uid_line = next((line for line in status.splitlines() if line.startswith("Uid:")), "")
+        try:
+            real_uid = int(uid_line.split()[1])
+        except (IndexError, ValueError):
+            return False
+        current_uid = os.getuid() if hasattr(os, "getuid") else real_uid
+        command_name = Path(os.fsdecode(cmdline)).name if cmdline else ""
+        return real_uid == current_uid and command_name == expected_name
+
+    def _managed_processes(self) -> Tuple[Tuple[int, str], ...]:
+        """Resolve only MPS processes rooted at this controller's validated pidfile."""
+        pid_path = self.paths.pipe_directory / "nvidia-cuda-mps-control.pid"
+        try:
+            control_pid = int(pid_path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return ()
+        if not self._matching_process(control_pid, "nvidia-cuda-mps-control"):
+            return ()
+
+        processes: List[Tuple[int, str]] = []
+        children_path = Path("/proc") / str(control_pid) / "task" / str(control_pid) / "children"
+        try:
+            children = children_path.read_text(encoding="utf-8").split()
+        except OSError:
+            children = []
+        for value in children:
+            try:
+                child_pid = int(value)
+            except ValueError:
+                continue
+            if self._matching_process(child_pid, "nvidia-cuda-mps-server"):
+                processes.append((child_pid, "nvidia-cuda-mps-server"))
+        processes.append((control_pid, "nvidia-cuda-mps-control"))
+        return tuple(processes)
+
+    def _force_terminate_managed_processes(
+        self,
+        processes: Iterable[Tuple[int, str]],
+        *,
+        timeout: float = 2.0,
+    ) -> bool:
+        """Terminate validated MPS processes when the control socket is wedged."""
+        remaining = list(processes)
+        if not remaining:
+            return False
+
+        for pid, expected_name in remaining:
+            if self._matching_process(pid, expected_name):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except OSError:
+                    pass
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            remaining = [
+                item for item in remaining if self._matching_process(item[0], item[1])
+            ]
+            if not remaining:
+                return True
+            time.sleep(0.05)
+
+        for pid, expected_name in remaining:
+            if self._matching_process(pid, expected_name):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
+        kill_deadline = time.monotonic() + min(timeout, 1.0)
+        while time.monotonic() < kill_deadline:
+            remaining = [
+                item for item in remaining if self._matching_process(item[0], item[1])
+            ]
+            if not remaining:
+                return True
+            time.sleep(0.05)
+        return False
 
     def _gpu_uuid(self) -> str:
         env = os.environ.copy()
@@ -262,7 +362,9 @@ class MPSController:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise MPSControlError(f"Failed to start NVIDIA MPS: {exc}") from exc
-        if completed.returncode != 0 and not self.is_running():
+        if completed.returncode != 0:
+            if self.is_running():
+                return False
             detail = (completed.stderr or completed.stdout).strip()
             raise MPSControlError(f"Failed to start NVIDIA MPS: {detail or 'unknown error'}")
 
@@ -332,22 +434,32 @@ class MPSController:
     def stop(self, *, force: bool = False, timeout: float = 8.0) -> bool:
         """Stop an idle daemon, or stop an active daemon when force is True."""
         self._ensure_supported()
-        status = self.status()
-        if not status.running:
-            return False
-        if status.client_pids and not force:
-            clients = ", ".join(str(pid) for pid in status.client_pids)
-            raise MPSControlError(
-                f"Refusing to stop MPS while client processes are active: {clients}; "
-                "use --force only if interrupting them is intended"
-            )
+        managed_processes: Tuple[Tuple[int, str], ...] = ()
+        if force:
+            if not self.is_running():
+                return False
+            managed_processes = self._managed_processes()
+        else:
+            status = self.status()
+            if not status.running:
+                return False
+            if status.client_pids:
+                clients = ", ".join(str(pid) for pid in status.client_pids)
+                raise MPSControlError(
+                    f"Refusing to stop MPS while client processes are active: {clients}; "
+                    "use --force only if interrupting them is intended"
+                )
 
         try:
             completed = self._run_control("quit", timeout=timeout)
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise MPSControlError(f"Failed to stop NVIDIA MPS: {exc}") from exc
+        except MPSControlError:
+            if force and self._force_terminate_managed_processes(managed_processes):
+                return True
+            raise
         if not self._control_succeeded(completed):
             detail = (completed.stderr or completed.stdout).strip()
+            if force and self._force_terminate_managed_processes(managed_processes):
+                return True
             raise MPSControlError(f"Failed to stop NVIDIA MPS: {detail or 'unknown error'}")
 
         deadline = time.monotonic() + timeout
@@ -355,6 +467,8 @@ class MPSController:
             if not self.is_running():
                 return True
             time.sleep(0.1)
+        if force and self._force_terminate_managed_processes(managed_processes):
+            return True
         raise MPSControlError("NVIDIA MPS control daemon did not stop before timeout")
 
     def client_environment(

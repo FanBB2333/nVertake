@@ -238,8 +238,8 @@ def _build_child_env(args: argparse.Namespace, *, device: int) -> dict:
         except (MPSControlError, OSError, subprocess.SubprocessError):
             if started:
                 try:
-                    controller.stop()
-                except MPSControlError as cleanup_error:
+                    controller.stop(force=True)
+                except (MPSControlError, OSError, subprocess.SubprocessError) as cleanup_error:
                     logger.warning("Failed to stop MPS after client probe error: %s", cleanup_error)
             raise
         action = "started" if started else "reused"

@@ -9,6 +9,7 @@ resource-contention experiments.
 - **PyTorch Priority Hook**: Run common PyTorch training and inference workloads on a high-priority CUDA stream with little or no source change
 - **Multi-Process SM Shares**: Launch two, three, or more Python files together with a requested SM weight for each process
 - **YAML and Multi-GPU Launches**: Keep scripts, arguments, environments, working directories, and GPU placement in one job file
+- **Cross-Machine Orchestration**: Launch one YAML configuration on several SSH hosts with Git revision checks and an aggregate report
 - **Dry-Run Diagnostics**: Check driver support and preview exact SM counts without creating contexts or processes
 - **Per-Process PyTorch Memory Caps**: Pair SM shares with caching-allocator memory fractions
 - **Live Reports and Calibration**: Monitor local PIDs and adjust SM weights from workload-reported throughput
@@ -94,12 +95,19 @@ report path. Inspect the latest local run, a particular run id, or a report file
 nvertake monitor
 nvertake monitor RUN_ID --watch
 nvertake monitor path/to/report.json --json
+nvertake list
+nvertake logs RUN_ID --job foreground --lines 50
+nvertake stop RUN_ID
 ```
 
 The monitor reports the job name, physical GPU, PID, assigned SM count,
 framebuffer memory, latest workload throughput, and state. Add `device: 0` or
 `device: 1` to each job to launch groups on both GPUs at the same time; see
 [`examples/jobs-multi-gpu.yaml`](examples/jobs-multi-gpu.yaml).
+Use `device: auto` to place jobs on the least-loaded compatible GPU. nVertake
+accounts for current free framebuffer memory, configured memory fractions,
+per-GPU job counts, and the driver-reported maximum Green process count before
+previewing the exact partition.
 When a WSL driver does not expose per-process framebuffer memory through
 `nvidia-smi`, a job calling `report_throughput()` supplies PyTorch allocator
 memory as a labeled fallback.
@@ -110,6 +118,63 @@ job for a GPU; nVertake requires their sum to be at most `1.0`. This limits the
 PyTorch caching allocator. Direct CUDA allocations and allocations made by
 other libraries are outside this limit, and driver/context overhead still uses
 memory.
+
+### Coordinate Several Machines
+
+[`examples/jobs-remote.yaml`](examples/jobs-remote.yaml) runs two jobs on
+`406-tailscale` and two jobs on `gem12-wsl-tailscale`. The relevant structure is:
+
+```yaml
+hosts:
+  "406":
+    ssh: 406-tailscale
+    repo: ~/repos/nVertake
+    python: /home/l1ght/anaconda3/envs/torch/bin/python
+  gem12:
+    ssh: gem12-wsl-tailscale
+    repo: ~/repos/nVertake
+    python: /home/l1ght/miniforge3/envs/torch/bin/python
+
+defaults:
+  cwd: examples
+  device: auto
+
+jobs:
+  - name: task-on-406
+    host: "406"
+    script: throughput_worker.py
+    sm_share: 30
+  - name: task-on-gem12
+    host: gem12
+    script: throughput_worker.py
+    sm_share: 70
+```
+
+Run a read-only capability, placement, and SM-allocation check, then launch:
+
+```bash
+nvertake launch examples/jobs-remote.yaml --dry-run
+nvertake launch examples/jobs-remote.yaml
+nvertake monitor RUN_ID --watch
+```
+
+The coordinator connects with the system `ssh` command and runs the configured
+Python interpreter from each checked-out repository. Before launch, it requires
+the coordinator and every used host to have the same Git commit and no tracked
+or untracked changes. This prevents one machine from silently running different
+scheduler or workload code. `git_check: false` disables this protection when
+deliberately testing uncommitted code.
+
+The aggregate report stores the config SHA-256, Git commit, coordinator Python
+and platform, and each host's Python, PyTorch, CUDA, driver, GPU, memory, and SM
+capabilities. It also records the host-local report and log locations.
+`nvertake monitor`, `logs`, and `stop` use those recorded transports, so they do
+not depend on guessing remote PIDs or paths. `stop` verifies the recorded
+launcher process identity before sending signals.
+
+SM percentages are allocated separately within each physical GPU. A 30/70
+split on `406` and a 40/60 split on `gem12` are two independent partitions;
+there is no meaningful driver-level SM percentage spanning both machines.
 
 ### Calibrate Shares from Measured Throughput
 

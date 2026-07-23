@@ -10,7 +10,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -20,7 +20,7 @@ import yaml
 from .diagnostics import inspect_green_device, plan_green_partitions
 from .green_process import GreenProcessRunResult, launch_green_process_scripts
 from .metrics import read_throughput_metric
-from .runtime import RunReport, utc_now
+from .runtime import RunReport, process_create_time, utc_now
 
 
 @dataclass(frozen=True)
@@ -32,10 +32,23 @@ class JobSpec:
     sm_share: float
     target_share: float
     memory_share: Optional[float]
-    device: int
+    device: Optional[int]
     env: Mapping[str, str]
     cwd: Path
     log: Optional[Path]
+    host: str = "local"
+
+
+@dataclass(frozen=True)
+class HostSpec:
+    """Execution transport and repository settings for one YAML host."""
+
+    name: str
+    repo: str
+    python: str
+    ssh: Optional[str] = None
+    ssh_options: Tuple[str, ...] = ()
+    local: bool = False
 
 
 @dataclass(frozen=True)
@@ -55,6 +68,8 @@ class JobConfig:
     report: Optional[Path]
     startup_timeout: float
     calibration: CalibrationSpec
+    hosts: Mapping[str, HostSpec]
+    git_check: bool = True
 
 
 @dataclass(frozen=True)
@@ -126,6 +141,81 @@ def _resolve_path(base: Path, value: Any, label: str) -> Path:
     return path.resolve() if path.is_absolute() else (base / path).resolve()
 
 
+def _as_path(value: Any, label: str) -> Path:
+    if not isinstance(value, (str, os.PathLike)) or not str(value):
+        raise ValueError(f"{label} must be a non-empty path")
+    return Path(str(value))
+
+
+def _parse_device(value: Any, label: str) -> Optional[int]:
+    if isinstance(value, str) and value.strip().lower() == "auto":
+        return None
+    try:
+        device = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a non-negative integer or 'auto'") from exc
+    if device < 0:
+        raise ValueError(f"{label} must be non-negative or 'auto'")
+    return device
+
+
+def _parse_hosts(
+    value: Any,
+    *,
+    base: Path,
+) -> Dict[str, HostSpec]:
+    if value is None:
+        return {}
+    mapping = _as_mapping(value, "hosts")
+    if not mapping:
+        raise ValueError("hosts must not be empty")
+
+    hosts: Dict[str, HostSpec] = {}
+    for raw_name, raw_settings in mapping.items():
+        name = str(raw_name).strip()
+        if not name:
+            raise ValueError("host names must be non-empty")
+        if name in hosts:
+            raise ValueError(f"Duplicate host name: {name}")
+        settings = _as_mapping(raw_settings, f"hosts.{name}")
+        raw_local = settings.get("local", False)
+        if not isinstance(raw_local, bool):
+            raise ValueError(f"hosts.{name}.local must be true or false")
+        local = raw_local
+        raw_ssh = settings.get("ssh")
+        if raw_ssh is not None and (
+            not isinstance(raw_ssh, str) or not raw_ssh.strip()
+        ):
+            raise ValueError(f"hosts.{name}.ssh must be a non-empty string")
+        ssh = raw_ssh.strip() if isinstance(raw_ssh, str) else None
+        if not local and ssh is None:
+            raise ValueError(f"hosts.{name} requires ssh or local: true")
+
+        raw_repo = settings.get("repo", ".")
+        if not isinstance(raw_repo, (str, os.PathLike)) or not str(raw_repo):
+            raise ValueError(f"hosts.{name}.repo must be a non-empty path")
+        if local:
+            repo = str(_resolve_path(base, raw_repo, f"hosts.{name}.repo"))
+        else:
+            repo = str(raw_repo)
+
+        raw_python = settings.get("python", sys.executable if local else "python")
+        if not isinstance(raw_python, str) or not raw_python.strip():
+            raise ValueError(f"hosts.{name}.python must be a non-empty string")
+        ssh_options = _as_string_tuple(
+            settings.get("ssh_options"), f"hosts.{name}.ssh_options"
+        )
+        hosts[name] = HostSpec(
+            name=name,
+            repo=repo,
+            python=raw_python.strip(),
+            ssh=ssh,
+            ssh_options=ssh_options,
+            local=local,
+        )
+    return hosts
+
+
 def _parse_calibration(value: Any) -> CalibrationSpec:
     if value in (None, False):
         return CalibrationSpec()
@@ -165,13 +255,29 @@ def load_job_config(path: str) -> JobConfig:
         raise ValueError(f"Unsupported YAML job schema version: {version!r}")
 
     base = config_path.parent
+    hosts = _parse_hosts(root.get("hosts"), base=base)
     defaults = _as_mapping(root.get("defaults"), "defaults")
-    default_device = int(defaults.get("device", 0))
-    if default_device < 0:
-        raise ValueError("defaults.device must be non-negative")
-    default_cwd = _resolve_path(base, defaults.get("cwd", "."), "defaults.cwd")
-    if not default_cwd.is_dir():
-        raise NotADirectoryError(f"Default working directory not found: {default_cwd}")
+    default_device = _parse_device(defaults.get("device", 0), "defaults.device")
+    raw_default_cwd = defaults.get("cwd", ".")
+    default_host_value = defaults.get("host")
+    if default_host_value is not None:
+        default_host = str(default_host_value).strip()
+    elif not hosts:
+        default_host = "local"
+    elif len(hosts) == 1:
+        default_host = next(iter(hosts))
+    else:
+        default_host = None
+    if default_host is not None and hosts and default_host not in hosts:
+        raise ValueError(f"Unknown defaults.host: {default_host}")
+    if hosts:
+        default_cwd = _as_path(raw_default_cwd, "defaults.cwd")
+    else:
+        default_cwd = _resolve_path(base, raw_default_cwd, "defaults.cwd")
+        if not default_cwd.is_dir():
+            raise NotADirectoryError(
+                f"Default working directory not found: {default_cwd}"
+            )
     default_env = _as_environment(defaults.get("env"), "defaults.env")
     default_memory = _memory_fraction(
         defaults.get("memory_share"), "defaults.memory_share"
@@ -185,12 +291,31 @@ def load_job_config(path: str) -> JobConfig:
     names = set()
     for index, raw_job in enumerate(raw_jobs):
         item = _as_mapping(raw_job, f"jobs[{index}]")
-        cwd = _resolve_path(base, item.get("cwd", default_cwd), f"jobs[{index}].cwd")
-        if not cwd.is_dir():
-            raise NotADirectoryError(f"Working directory not found: {cwd}")
-        script = _resolve_path(cwd, item.get("script"), f"jobs[{index}].script")
-        if not script.is_file():
-            raise FileNotFoundError(f"Python script not found: {script}")
+        raw_host = item.get("host", default_host)
+        if raw_host is None:
+            raise ValueError(
+                f"jobs[{index}] requires host because no defaults.host was set"
+            )
+        host = str(raw_host).strip()
+        if not host:
+            raise ValueError(f"jobs[{index}].host must be non-empty")
+        if hosts and host not in hosts:
+            raise ValueError(f"jobs[{index}] references unknown host: {host}")
+
+        if hosts:
+            cwd = _as_path(
+                item.get("cwd", default_cwd), f"jobs[{index}].cwd"
+            )
+            script = _as_path(item.get("script"), f"jobs[{index}].script")
+        else:
+            cwd = _resolve_path(
+                base, item.get("cwd", default_cwd), f"jobs[{index}].cwd"
+            )
+            if not cwd.is_dir():
+                raise NotADirectoryError(f"Working directory not found: {cwd}")
+            script = _resolve_path(cwd, item.get("script"), f"jobs[{index}].script")
+            if not script.is_file():
+                raise FileNotFoundError(f"Python script not found: {script}")
 
         name_value = item.get("name", script.stem)
         if not isinstance(name_value, str) or not name_value.strip():
@@ -200,9 +325,10 @@ def load_job_config(path: str) -> JobConfig:
             raise ValueError(f"Duplicate job name: {name}")
         names.add(name)
 
-        device = int(item.get("device", default_device))
-        if device < 0:
-            raise ValueError(f"jobs[{index}].device must be non-negative")
+        if "device" in item:
+            device = _parse_device(item["device"], f"jobs[{index}].device")
+        else:
+            device = default_device
         raw_sm_share = item.get("sm_share", item.get("share"))
         if raw_sm_share is None:
             raise ValueError(f"jobs[{index}] requires sm_share")
@@ -239,19 +365,11 @@ def load_job_config(path: str) -> JobConfig:
                 env=environment,
                 cwd=cwd,
                 log=log,
+                host=host,
             )
         )
 
-    grouped = _group_jobs(jobs)
-    for device, group in grouped.items():
-        fractions = [job.memory_share for job in group]
-        if any(value is not None for value in fractions):
-            if any(value is None for value in fractions):
-                raise ValueError(
-                    f"GPU {device}: memory_share must be set for every job or none"
-                )
-            if sum(float(value) for value in fractions if value is not None) > 1.0 + 1e-9:
-                raise ValueError(f"GPU {device}: memory_share values total more than 1.0")
+    _validate_memory_groups(jobs, allow_auto=True)
 
     logs_dir = _resolve_path(base, root.get("logs_dir", "nvertake-logs"), "logs_dir")
     report = (
@@ -262,6 +380,9 @@ def load_job_config(path: str) -> JobConfig:
     startup_timeout = float(root.get("startup_timeout", 60.0))
     if not math.isfinite(startup_timeout) or startup_timeout <= 0:
         raise ValueError("startup_timeout must be positive")
+    raw_git_check = root.get("git_check", True)
+    if not isinstance(raw_git_check, bool):
+        raise ValueError("git_check must be true or false")
     return JobConfig(
         path=config_path,
         jobs=tuple(jobs),
@@ -269,14 +390,166 @@ def load_job_config(path: str) -> JobConfig:
         report=report,
         startup_timeout=startup_timeout,
         calibration=_parse_calibration(root.get("calibration")),
+        hosts=hosts,
+        git_check=raw_git_check,
     )
 
 
 def _group_jobs(jobs: Sequence[JobSpec]) -> Dict[int, Tuple[JobSpec, ...]]:
     groups: Dict[int, List[JobSpec]] = {}
     for job in jobs:
+        if job.device is None:
+            raise ValueError(
+                f"Job {job.name!r} still has device: auto; device placement was not run"
+            )
         groups.setdefault(job.device, []).append(job)
     return {device: tuple(group) for device, group in sorted(groups.items())}
+
+
+def _validate_memory_groups(
+    jobs: Sequence[JobSpec],
+    *,
+    allow_auto: bool = False,
+) -> None:
+    groups: Dict[Tuple[str, int], List[JobSpec]] = {}
+    for job in jobs:
+        if job.device is None:
+            if allow_auto:
+                continue
+            raise ValueError(f"Job {job.name!r} has no resolved GPU device")
+        groups.setdefault((job.host, job.device), []).append(job)
+
+    for (host, device), group in groups.items():
+        fractions = [job.memory_share for job in group]
+        label = f"{host} GPU {device}" if host != "local" else f"GPU {device}"
+        if any(value is not None for value in fractions):
+            if any(value is None for value in fractions):
+                raise ValueError(
+                    f"{label}: memory_share must be set for every job or none"
+                )
+            total = sum(
+                float(value) for value in fractions if value is not None
+            )
+            if total > 1.0 + 1e-9:
+                raise ValueError(
+                    f"{label}: memory_share values total more than 1.0"
+                )
+
+
+def assign_auto_devices(
+    jobs: Sequence[JobSpec],
+    inventories: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> Tuple[JobSpec, ...]:
+    """Resolve ``device: auto`` using free memory and assigned load."""
+
+    resolved: List[JobSpec] = list(jobs)
+    by_host: Dict[str, List[int]] = {}
+    for index, job in enumerate(resolved):
+        by_host.setdefault(job.host, []).append(index)
+
+    for host, indices in by_host.items():
+        inventory = list(inventories.get(host, ()))
+        if not inventory:
+            raise RuntimeError(f"Host {host!r} did not report any CUDA GPUs")
+        devices = {}
+        for raw_device in inventory:
+            try:
+                ordinal = int(raw_device["index"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Host {host!r} returned an invalid GPU inventory"
+                ) from exc
+            total = float(raw_device.get("memory_total_mib") or 0)
+            free = float(raw_device.get("memory_free_mib") or total or 0)
+            base_pressure = 0.0 if total <= 0 else max(0.0, 1.0 - free / total)
+            devices[ordinal] = {
+                "base_pressure": base_pressure,
+                "memory": 0.0,
+                "count": 0,
+                "mode": None,
+                "max_processes": int(
+                    raw_device.get("max_green_processes") or 2**31 - 1
+                ),
+            }
+
+        for index in indices:
+            job = resolved[index]
+            if job.device is None:
+                continue
+            if job.device not in devices:
+                raise ValueError(
+                    f"Host {host!r} has no CUDA device {job.device}"
+                )
+            state = devices[job.device]
+            mode = job.memory_share is not None
+            if state["mode"] is not None and state["mode"] != mode:
+                raise ValueError(
+                    f"{host} GPU {job.device}: memory_share must be set for "
+                    "every job or none"
+                )
+            state["mode"] = mode
+            state["memory"] += float(job.memory_share or 0.0)
+            state["count"] += 1
+            if state["count"] > state["max_processes"]:
+                raise ValueError(
+                    f"Host {host!r} GPU {job.device} has "
+                    f"{state['count']} jobs but supports at most "
+                    f"{state['max_processes']} Green processes"
+                )
+
+        auto_indices = [index for index in indices if resolved[index].device is None]
+        auto_indices.sort(
+            key=lambda index: (
+                float(resolved[index].memory_share or 0.0),
+                resolved[index].sm_share,
+                resolved[index].name,
+            ),
+            reverse=True,
+        )
+        for index in auto_indices:
+            job = resolved[index]
+            mode = job.memory_share is not None
+            candidates = []
+            for ordinal, state in devices.items():
+                if state["count"] >= state["max_processes"]:
+                    continue
+                if state["mode"] is not None and state["mode"] != mode:
+                    continue
+                next_memory = state["memory"] + float(job.memory_share or 0.0)
+                if mode and next_memory > 1.0 + 1e-9:
+                    continue
+                candidates.append(
+                    (
+                        state["base_pressure"] + state["memory"],
+                        state["count"],
+                        ordinal,
+                    )
+                )
+            if not candidates:
+                raise ValueError(
+                    f"Host {host!r} has no GPU that can accept auto-placed "
+                    f"job {job.name!r} without violating memory_share"
+                )
+            _pressure, _count, ordinal = min(candidates)
+            resolved[index] = replace(job, device=ordinal)
+            state = devices[ordinal]
+            state["mode"] = mode
+            state["memory"] += float(job.memory_share or 0.0)
+            state["count"] += 1
+
+    _validate_memory_groups(resolved)
+    return tuple(resolved)
+
+
+def _resolve_local_auto_devices(config: JobConfig) -> JobConfig:
+    if not any(job.device is None for job in config.jobs):
+        _validate_memory_groups(config.jobs)
+        return config
+    from .remote_agent import _gpu_inventory
+
+    inventory = _gpu_inventory()
+    jobs = assign_auto_devices(config.jobs, {"local": inventory})
+    return replace(config, jobs=jobs)
 
 
 def _normalized(values: Sequence[float]) -> Tuple[float, ...]:
@@ -318,7 +591,13 @@ def adjust_shares_for_throughput(
 
 
 def plan_job_config(config: JobConfig) -> Dict[str, Any]:
-    """Preview every local GPU group without creating a context or process."""
+    """Preview every GPU group without creating a context or process."""
+
+    if config.hosts:
+        from .orchestration import plan_distributed_jobs
+
+        return plan_distributed_jobs(config)
+    config = _resolve_local_auto_devices(config)
 
     devices = []
     for device, group in _group_jobs(config.jobs).items():
@@ -348,6 +627,7 @@ def plan_job_config(config: JobConfig) -> Dict[str, Any]:
                     "args": list(job.args),
                     "cwd": str(job.cwd),
                     "env": dict(job.env),
+                    "host": job.host,
                     "device": device,
                     "requested_sm_share": job.sm_share,
                     "memory_share": job.memory_share,
@@ -594,14 +874,37 @@ def _calibrate(
     return effective, details
 
 
-def launch_jobs(config: JobConfig, *, quiet: bool = False) -> JobLaunchResult:
-    """Launch a validated YAML job configuration across its local GPUs."""
+def launch_jobs(
+    config: JobConfig,
+    *,
+    quiet: bool = False,
+    run_id: Optional[str] = None,
+    metadata: Optional[Mapping[str, Any]] = None,
+) -> JobLaunchResult:
+    """Launch a validated YAML job configuration."""
 
-    run_id = _new_run_id()
+    if config.hosts:
+        from .orchestration import launch_distributed_jobs
+
+        return launch_distributed_jobs(config, quiet=quiet)
+    config = _resolve_local_auto_devices(config)
+
+    run_id = run_id or _new_run_id()
     run_dir = (config.logs_dir / run_id).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     report_path = config.report.resolve() if config.report else run_dir / "report.json"
-    report = RunReport(report_path, run_id=run_id, config_path=config.path)
+    launch_metadata = {
+        "launcher_pid": os.getpid(),
+        "launcher_create_time": process_create_time(os.getpid()),
+        "python": sys.executable,
+    }
+    launch_metadata.update(dict(metadata or {}))
+    report = RunReport(
+        report_path,
+        run_id=run_id,
+        config_path=config.path,
+        metadata=launch_metadata,
+    )
     groups = _group_jobs(config.jobs)
     paths: Dict[int, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
         device: _group_paths(group, run_dir) for device, group in groups.items()
@@ -614,6 +917,7 @@ def launch_jobs(config: JobConfig, *, quiet: bool = False) -> JobLaunchResult:
             report_jobs.append(
                 {
                     "name": job.name,
+                    "host": job.host,
                     "device": device,
                     "script": str(job.script),
                     "args": list(job.args),

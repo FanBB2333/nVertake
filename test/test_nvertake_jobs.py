@@ -21,12 +21,19 @@ from nvertake.green_process import (
     _apply_torch_memory_share,
 )
 from nvertake.jobs import (
+    assign_auto_devices,
     adjust_shares_for_throughput,
     launch_jobs,
     load_job_config,
 )
 from nvertake.metrics import read_throughput_metric, report_throughput
-from nvertake.runtime import RunReport, enrich_report, format_monitor_table
+from nvertake.runtime import (
+    RunReport,
+    enrich_report,
+    format_monitor_table,
+    read_report_logs,
+    stop_local_report,
+)
 
 
 @dataclass
@@ -184,6 +191,103 @@ jobs:
             )
             with self.assertRaisesRegex(ValueError, "every job"):
                 load_job_config(str(config_path))
+
+    def test_loads_remote_hosts_without_requiring_remote_files_locally(self):
+        with tempfile.TemporaryDirectory() as root:
+            config_path = Path(root) / "remote.yaml"
+            config_path.write_text(
+                """hosts:
+  406:
+    ssh: 406-tailscale
+    repo: ~/repos/nVertake
+    python: /opt/torch/bin/python
+defaults:
+  host: 406
+  cwd: examples
+  device: auto
+jobs:
+  - name: remote-worker
+    script: throughput_worker.py
+    sm_share: 1
+""",
+                encoding="utf-8",
+            )
+            config = load_job_config(str(config_path))
+
+        self.assertIn("406", config.hosts)
+        self.assertEqual(config.hosts["406"].ssh, "406-tailscale")
+        self.assertEqual(config.jobs[0].host, "406")
+        self.assertIsNone(config.jobs[0].device)
+        self.assertEqual(config.jobs[0].cwd, Path("examples"))
+        self.assertEqual(config.jobs[0].script, Path("throughput_worker.py"))
+
+    def test_remote_job_rejects_unknown_host(self):
+        with tempfile.TemporaryDirectory() as root:
+            config_path = Path(root) / "remote.yaml"
+            config_path.write_text(
+                """hosts:
+  known: {ssh: known, repo: /repo}
+jobs:
+  - {host: missing, script: worker.py, sm_share: 1}
+""",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "unknown host"):
+                load_job_config(str(config_path))
+
+    def test_auto_device_placement_balances_memory_limits(self):
+        with tempfile.TemporaryDirectory() as root:
+            config_path = Path(root) / "remote.yaml"
+            config_path.write_text(
+                """hosts:
+  gpu-box: {ssh: gpu-box, repo: /repo}
+defaults: {host: gpu-box, device: auto}
+jobs:
+  - {name: first, script: a.py, sm_share: 1, memory_share: 0.6}
+  - {name: second, script: b.py, sm_share: 1, memory_share: 0.6}
+""",
+                encoding="utf-8",
+            )
+            config = load_job_config(str(config_path))
+        placed = assign_auto_devices(
+            config.jobs,
+            {
+                "gpu-box": (
+                    {"index": 0, "memory_total_mib": 100, "memory_free_mib": 90},
+                    {"index": 1, "memory_total_mib": 100, "memory_free_mib": 80},
+                )
+            },
+        )
+        self.assertEqual({job.device for job in placed}, {0, 1})
+
+    def test_auto_device_placement_respects_driver_process_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            config_path = Path(root) / "remote.yaml"
+            config_path.write_text(
+                """hosts:
+  gpu-box: {ssh: gpu-box, repo: /repo}
+defaults: {host: gpu-box, device: auto}
+jobs:
+  - {name: first, script: a.py, sm_share: 1}
+  - {name: second, script: b.py, sm_share: 1}
+""",
+                encoding="utf-8",
+            )
+            config = load_job_config(str(config_path))
+        with self.assertRaisesRegex(ValueError, "no GPU"):
+            assign_auto_devices(
+                config.jobs,
+                {
+                    "gpu-box": (
+                        {
+                            "index": 0,
+                            "memory_total_mib": 100,
+                            "memory_free_mib": 100,
+                            "max_green_processes": 1,
+                        },
+                    )
+                },
+            )
 
 
 class TestMemoryAndMetrics(unittest.TestCase):
@@ -355,6 +459,222 @@ jobs:
         self.assertEqual(launch.call_count, 2)
         self.assertEqual(report_payload["status"], "completed")
         self.assertEqual(len({job["log_path"] for job in report_payload["jobs"]}), 4)
+
+    def test_local_log_reader_and_safe_stop_use_reported_processes(self):
+        with tempfile.TemporaryDirectory() as root:
+            log_path = Path(root) / "worker.log"
+            log_path.write_text("one\ntwo\nthree\n", encoding="utf-8")
+            payload = {
+                "run_id": "run",
+                "status": "running",
+                "metadata": {
+                    "launcher_pid": 999,
+                    "launcher_create_time": 12.5,
+                },
+                "jobs": [
+                    {
+                        "name": "worker",
+                        "pid": 123,
+                        "log_path": str(log_path),
+                    }
+                ],
+            }
+            logs = read_report_logs(payload, job_name="worker", lines=2)
+            with patch(
+                "nvertake.runtime.process_create_time", return_value=12.5
+            ), patch("nvertake.runtime.os.kill") as kill:
+                stopped = stop_local_report(payload)
+
+        self.assertEqual(logs[0]["content"], "two\nthree\n")
+        self.assertEqual(stopped["pids"], [123, 999])
+        self.assertEqual(kill.call_count, 2)
+
+
+class TestRemoteOrchestration(unittest.TestCase):
+    def _remote_config(self, root: Path):
+        config_path = root / "remote.yaml"
+        config_path.write_text(
+            """hosts:
+  first:
+    ssh: first.example
+    repo: /srv/nVertake
+    python: /opt/torch/bin/python
+defaults:
+  host: first
+  cwd: examples
+  device: auto
+jobs:
+  - {name: a, script: throughput_worker.py, sm_share: 30}
+  - {name: b, script: throughput_worker.py, sm_share: 70}
+""",
+            encoding="utf-8",
+        )
+        return load_job_config(str(config_path))
+
+    def test_distributed_plan_checks_git_and_sends_resolved_devices(self):
+        from nvertake.orchestration import plan_distributed_jobs
+
+        with tempfile.TemporaryDirectory() as root:
+            config = self._remote_config(Path(root))
+            source = {
+                "git": {"commit": "abc", "branch": "main", "dirty": False},
+                "config_sha256": "hash",
+                "coordinator": {},
+            }
+            probe = {
+                "hostname": "first",
+                "repo_path": "/srv/nVertake",
+                "git": {"commit": "abc", "branch": "main", "dirty": False},
+                "gpus": [{"index": 0, "memory_total_mib": 10, "memory_free_mib": 10}],
+            }
+
+            def fake_call(_host, action, payload, **_kwargs):
+                self.assertEqual(action, "plan")
+                self.assertEqual(
+                    [job["device"] for job in payload["jobs"]], [0, 0]
+                )
+                return {"devices": [{"device": {"device": 0}, "jobs": []}]}
+
+            with patch(
+                "nvertake.orchestration._source_metadata", return_value=source
+            ), patch(
+                "nvertake.orchestration._probe_hosts",
+                return_value={"first": probe},
+            ), patch(
+                "nvertake.orchestration.call_host", side_effect=fake_call
+            ):
+                plan = plan_distributed_jobs(config)
+
+        self.assertTrue(plan["dry_run"])
+        self.assertEqual(plan["hosts"][0]["name"], "first")
+
+    def test_distributed_plan_rejects_mismatched_remote_commit(self):
+        from nvertake.orchestration import plan_distributed_jobs
+
+        with tempfile.TemporaryDirectory() as root:
+            config = self._remote_config(Path(root))
+            source = {
+                "git": {"commit": "abc", "branch": "main", "dirty": False},
+                "config_sha256": "hash",
+                "coordinator": {},
+            }
+            probe = {
+                "repo_path": "/srv/nVertake",
+                "git": {"commit": "other", "branch": "main", "dirty": False},
+                "gpus": [{"index": 0}],
+            }
+            with patch(
+                "nvertake.orchestration._source_metadata", return_value=source
+            ), patch(
+                "nvertake.orchestration._probe_hosts",
+                return_value={"first": probe},
+            ):
+                with self.assertRaisesRegex(RuntimeError, "Remote Git state"):
+                    plan_distributed_jobs(config)
+
+    def test_distributed_launch_writes_aggregate_report(self):
+        from nvertake.orchestration import launch_distributed_jobs
+
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            config = self._remote_config(root_path)
+            source = {
+                "git": {"commit": "abc", "branch": "main", "dirty": False},
+                "config_sha256": "hash",
+                "coordinator": {"hostname": "coordinator"},
+            }
+            probe = {
+                "hostname": "first",
+                "repo_path": "/srv/nVertake",
+                "git": {"commit": "abc", "branch": "main", "dirty": False},
+                "gpus": [{"index": 0}],
+            }
+            jobs = assign_auto_devices(config.jobs, {"first": probe["gpus"]})
+
+            def snapshot(status):
+                return {
+                    "run_id": "remote",
+                    "status": status,
+                    "jobs": [
+                        {
+                            "name": job.name,
+                            "status": (
+                                "completed" if status == "completed" else "running"
+                            ),
+                            "device": 0,
+                            "pid": 100 + index,
+                            "sm_count": 10,
+                            "log_path": f"/tmp/{job.name}.log",
+                        }
+                        for index, job in enumerate(jobs)
+                    ],
+                }
+
+            def fake_call(_host, action, _payload, **_kwargs):
+                if action == "launch":
+                    return {
+                        "exit_code": 0,
+                        "snapshot": snapshot("completed"),
+                    }
+                if action == "snapshot":
+                    return snapshot("running")
+                raise AssertionError(action)
+
+            with patch.dict(
+                os.environ,
+                {"NVERTAKE_RUNTIME_DIR": str(root_path / "registry")},
+                clear=False,
+            ), patch(
+                "nvertake.orchestration._prepare",
+                return_value=(source, {"first": probe}, jobs),
+            ), patch(
+                "nvertake.orchestration.call_host", side_effect=fake_call
+            ):
+                result = launch_distributed_jobs(config, quiet=True)
+            report = json.loads(result.report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(report["status"], "completed")
+        self.assertEqual(report["metadata"]["config_sha256"], "hash")
+        self.assertTrue(all(job["remote"] for job in report["jobs"]))
+        self.assertTrue(all(job["status"] == "completed" for job in report["jobs"]))
+
+    def test_remote_agent_materializes_paths_under_host_repo(self):
+        from nvertake.remote_agent import _materialize_config
+
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            examples = repo / "examples"
+            examples.mkdir()
+            _write_worker(examples / "worker.py")
+            report_path = repo / ".nvertake" / "runs" / "id" / "report.json"
+            config = _materialize_config(
+                {
+                    "repo": str(repo),
+                    "host_name": "host",
+                    "report_path": str(report_path),
+                    "startup_timeout": 10,
+                    "calibration": {},
+                    "jobs": [
+                        {
+                            "name": "worker",
+                            "cwd": "examples",
+                            "script": "worker.py",
+                            "args": [],
+                            "calibration_args": [],
+                            "sm_share": 1,
+                            "target_share": 1,
+                            "memory_share": None,
+                            "device": 0,
+                            "env": {},
+                            "log": None,
+                        }
+                    ],
+                }
+            )
+
+        self.assertEqual(config.jobs[0].script, (examples / "worker.py").resolve())
+        self.assertEqual(config.jobs[0].host, "host")
 
 
 if __name__ == "__main__":

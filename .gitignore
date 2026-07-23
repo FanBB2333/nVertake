@@ -55,6 +55,7 @@ cover/
 test/overtake_output/
 nvertake-logs/
 examples/runs/
+.nvertake/
 
 # Translations
 *.mo

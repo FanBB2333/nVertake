@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -97,6 +98,44 @@ def load_report(path: Path) -> Dict[str, Any]:
     return payload
 
 
+def list_registered_runs() -> List[Dict[str, Any]]:
+    """Return newest-first summaries for locally registered reports."""
+
+    root = runtime_registry_directory()
+    candidates = sorted(
+        root.glob("*.json") if root.is_dir() else (),
+        key=lambda item: item.stat().st_mtime_ns,
+        reverse=True,
+    )
+    summaries: List[Dict[str, Any]] = []
+    for registry in candidates:
+        try:
+            entry = json.loads(registry.read_text(encoding="utf-8"))
+            report_path = Path(entry["report_path"]).expanduser().resolve()
+            report = load_report(report_path)
+        except (KeyError, TypeError, json.JSONDecodeError, OSError, RuntimeError):
+            continue
+        summaries.append(
+            {
+                "run_id": report.get("run_id", entry.get("run_id")),
+                "status": report.get("status", "unknown"),
+                "started_at": report.get("started_at"),
+                "updated_at": report.get("updated_at"),
+                "ended_at": report.get("ended_at"),
+                "jobs": len(report.get("jobs", [])),
+                "hosts": sorted(
+                    {
+                        str(job.get("host"))
+                        for job in report.get("jobs", [])
+                        if job.get("host")
+                    }
+                ),
+                "report_path": str(report_path),
+            }
+        )
+    return summaries
+
+
 def query_gpu_process_memory() -> Dict[int, int]:
     """Return per-PID framebuffer memory in MiB using nvidia-smi."""
 
@@ -141,12 +180,113 @@ def _pid_is_alive(pid: int) -> bool:
         return True
 
 
+def process_create_time(pid: int) -> Optional[float]:
+    try:
+        import psutil
+    except ImportError:
+        return None
+    try:
+        return float(psutil.Process(pid).create_time())
+    except (psutil.Error, OSError, ValueError):
+        return None
+
+
+def stop_local_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Signal only PIDs recorded by a non-terminal local run report."""
+
+    if payload.get("status") in TERMINAL_RUN_STATES:
+        return {"already_terminal": True, "status": payload.get("status"), "pids": []}
+    metadata = dict(payload.get("metadata") or {})
+    launcher_pid = metadata.get("launcher_pid")
+    expected_create_time = metadata.get("launcher_create_time")
+    if (
+        not isinstance(launcher_pid, int)
+        or launcher_pid <= 0
+        or expected_create_time is None
+    ):
+        raise RuntimeError("Run report has no verifiable launcher identity")
+    actual_create_time = process_create_time(launcher_pid)
+    if (
+        actual_create_time is None
+        or abs(actual_create_time - float(expected_create_time)) >= 0.01
+    ):
+        raise RuntimeError(
+            "Recorded launcher is no longer running; refusing to signal stale job PIDs"
+        )
+
+    signalled = []
+    for job in payload.get("jobs", []):
+        pid = job.get("pid")
+        if not isinstance(pid, int) or pid <= 0:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            signalled.append(pid)
+        except ProcessLookupError:
+            continue
+        except PermissionError as exc:
+            raise RuntimeError(f"Permission denied while signalling PID {pid}") from exc
+
+    if launcher_pid != os.getpid():
+        try:
+            os.kill(launcher_pid, signal.SIGINT)
+            signalled.append(launcher_pid)
+        except ProcessLookupError:
+            pass
+        except PermissionError as exc:
+            raise RuntimeError(
+                f"Permission denied while signalling launcher PID {launcher_pid}"
+            ) from exc
+    return {"already_terminal": False, "status": "stopping", "pids": signalled}
+
+
+def read_report_logs(
+    payload: Mapping[str, Any],
+    *,
+    job_name: Optional[str] = None,
+    lines: int = 100,
+) -> List[Dict[str, Any]]:
+    if lines <= 0:
+        raise ValueError("--lines must be positive")
+    logs = []
+    for job in payload.get("jobs", []):
+        if job_name is not None and job.get("name") != job_name:
+            continue
+        raw_path = job.get("log_path")
+        if not isinstance(raw_path, str):
+            continue
+        path = Path(raw_path).expanduser().resolve()
+        try:
+            content_lines = path.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines()
+        except OSError as exc:
+            raise RuntimeError(f"Cannot read log {path}: {exc}") from exc
+        selected = content_lines[-lines:]
+        logs.append(
+            {
+                "name": job.get("name"),
+                "host": job.get("host"),
+                "path": str(path),
+                "content": "\n".join(selected) + ("\n" if selected else ""),
+            }
+        )
+    if job_name is not None and not logs:
+        raise ValueError(f"No log found for job {job_name!r}")
+    return logs
+
+
 def enrich_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
     """Add live memory, cooperative throughput, and liveness to a snapshot."""
 
     snapshot = copy.deepcopy(dict(payload))
     memory = query_gpu_process_memory()
     for job in snapshot.get("jobs", []):
+        if job.get("remote"):
+            job["observed_status"] = job.get("observed_status") or job.get(
+                "status", "unknown"
+            )
+            continue
         pid = job.get("pid")
         if isinstance(pid, int) and pid in memory:
             job["gpu_memory_mib"] = memory[pid]
@@ -197,6 +337,7 @@ class RunReport:
         *,
         run_id: str,
         config_path: Optional[Path] = None,
+        metadata: Optional[Mapping[str, Any]] = None,
     ) -> None:
         self.path = path.expanduser().resolve()
         self.run_id = run_id
@@ -211,6 +352,7 @@ class RunReport:
             "config_path": str(config_path.resolve()) if config_path else None,
             "report_path": str(self.path),
             "calibration": None,
+            "metadata": dict(metadata or {}),
             "jobs": [],
         }
         self._write_locked()
@@ -249,6 +391,22 @@ class RunReport:
                     return
         raise KeyError(f"Unknown nVertake job: {name}")
 
+    def update_jobs(self, changes: Mapping[str, Mapping[str, Any]]) -> None:
+        """Update several jobs with one atomic report write."""
+
+        with self._lock:
+            remaining = set(changes)
+            for job in self._data["jobs"]:
+                name = job.get("name")
+                if name in changes:
+                    job.update(changes[name])
+                    remaining.discard(name)
+            if remaining:
+                raise KeyError(
+                    "Unknown nVertake jobs: " + ", ".join(sorted(remaining))
+                )
+            self._write_locked()
+
     def set_status(self, status: str, **changes: Any) -> None:
         with self._lock:
             self._data["status"] = status
@@ -260,6 +418,11 @@ class RunReport:
     def set_calibration(self, calibration: Mapping[str, Any]) -> None:
         with self._lock:
             self._data["calibration"] = dict(calibration)
+            self._write_locked()
+
+    def set_metadata(self, **changes: Any) -> None:
+        with self._lock:
+            self._data["metadata"].update(changes)
             self._write_locked()
 
     def refresh_live_stats(self) -> None:
@@ -308,27 +471,33 @@ class RunReport:
 
 def format_monitor_table(payload: Mapping[str, Any]) -> str:
     jobs: List[Mapping[str, Any]] = list(payload.get("jobs", []))
-    headers = ("NAME", "GPU", "PID", "SM", "VRAM MiB", "THROUGHPUT", "STATUS")
+    show_host = any(job.get("host") for job in jobs)
+    headers = (
+        ("HOST", "NAME", "GPU", "PID", "SM", "VRAM MiB", "THROUGHPUT", "STATUS")
+        if show_host
+        else ("NAME", "GPU", "PID", "SM", "VRAM MiB", "THROUGHPUT", "STATUS")
+    )
     rows = []
     for job in jobs:
         throughput = "-"
         if job.get("throughput") is not None:
             throughput = f"{float(job['throughput']):.3g} {job.get('throughput_unit') or ''}".strip()
-        rows.append(
-            (
-                str(job.get("name", "-")),
-                str(job.get("device", "-")),
-                str(job.get("pid") if job.get("pid") is not None else "-"),
-                str(job.get("sm_count") if job.get("sm_count") is not None else "-"),
-                str(
-                    job.get("gpu_memory_mib")
-                    if job.get("gpu_memory_mib") is not None
-                    else "-"
-                ),
-                throughput,
-                str(job.get("observed_status") or job.get("status", "unknown")),
-            )
+        values = (
+            str(job.get("name", "-")),
+            str(job.get("device", "-")),
+            str(job.get("pid") if job.get("pid") is not None else "-"),
+            str(job.get("sm_count") if job.get("sm_count") is not None else "-"),
+            str(
+                job.get("gpu_memory_mib")
+                if job.get("gpu_memory_mib") is not None
+                else "-"
+            ),
+            throughput,
+            str(job.get("observed_status") or job.get("status", "unknown")),
         )
+        if show_host:
+            values = (str(job.get("host", "-")),) + values
+        rows.append(values)
     widths = [len(value) for value in headers]
     for row in rows:
         for index, value in enumerate(row):

@@ -243,6 +243,71 @@ Examples:
         help='Watch refresh interval (default: 1)',
     )
 
+    list_parser = subparsers.add_parser(
+        'list',
+        help='List locally registered nVertake runs',
+    )
+    list_parser.add_argument(
+        '--json',
+        action='store_true',
+        dest='list_json',
+        help='Print machine-readable run summaries',
+    )
+    list_parser.add_argument(
+        '--limit',
+        type=int,
+        default=20,
+        metavar='COUNT',
+        help='Maximum number of runs to show (default: 20)',
+    )
+
+    stop_parser = subparsers.add_parser(
+        'stop',
+        help='Stop the exact processes recorded for a local or distributed run',
+    )
+    stop_parser.add_argument(
+        'run_identifier',
+        metavar='RUN_ID_OR_REPORT',
+        help='Run id or aggregate JSON report path',
+    )
+    stop_parser.add_argument(
+        '--json',
+        action='store_true',
+        dest='stop_json',
+        help='Print machine-readable stop results',
+    )
+
+    logs_parser = subparsers.add_parser(
+        'logs',
+        help='Read per-job logs from a local or distributed run',
+    )
+    logs_parser.add_argument(
+        'run_identifier',
+        nargs='?',
+        default=None,
+        metavar='RUN_ID_OR_REPORT',
+        help='Run id or JSON report path (default: latest local run)',
+    )
+    logs_parser.add_argument(
+        '--job',
+        default=None,
+        metavar='NAME',
+        help='Show only one named job',
+    )
+    logs_parser.add_argument(
+        '--lines',
+        type=int,
+        default=100,
+        metavar='COUNT',
+        help='Number of trailing lines per job (default: 100)',
+    )
+    logs_parser.add_argument(
+        '--json',
+        action='store_true',
+        dest='logs_json',
+        help='Print machine-readable log records',
+    )
+
     mps_parser = subparsers.add_parser(
         'mps',
         help='Manage the per-device NVIDIA MPS daemon',
@@ -521,7 +586,13 @@ def cmd_monitor(args: argparse.Namespace) -> int:
             raise ValueError("--interval must be positive")
         report_path = resolve_report_path(args.run_identifier)
         while True:
-            snapshot = enrich_report(load_report(report_path))
+            payload = load_report(report_path)
+            if (payload.get("metadata") or {}).get("orchestrator") == "ssh":
+                from .orchestration import refresh_distributed_snapshot
+
+                snapshot = refresh_distributed_snapshot(payload)
+            else:
+                snapshot = enrich_report(payload)
             if args.monitor_json:
                 print(json.dumps(snapshot, sort_keys=True), flush=True)
             else:
@@ -534,6 +605,121 @@ def cmd_monitor(args: argparse.Namespace) -> int:
         return 130
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         logger.error("Monitor failed: %s", exc)
+        return 1
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    """List registered local and aggregate reports."""
+
+    try:
+        from .runtime import list_registered_runs
+
+        if args.limit <= 0:
+            raise ValueError("--limit must be positive")
+        runs = list_registered_runs()[: args.limit]
+        if args.list_json:
+            print(json.dumps(runs, sort_keys=True))
+            return 0
+        headers = ("RUN ID", "STATUS", "JOBS", "HOSTS", "STARTED")
+        rows = [
+            (
+                str(run.get("run_id") or "-"),
+                str(run.get("status") or "unknown"),
+                str(run.get("jobs", 0)),
+                ",".join(run.get("hosts") or ()) or "-",
+                str(run.get("started_at") or "-"),
+            )
+            for run in runs
+        ]
+        widths = [len(value) for value in headers]
+        for row in rows:
+            for index, value in enumerate(row):
+                widths[index] = max(widths[index], len(value))
+        print(
+            "  ".join(
+                value.ljust(widths[index]) for index, value in enumerate(headers)
+            )
+        )
+        print("  ".join("-" * width for width in widths))
+        for row in rows:
+            print(
+                "  ".join(
+                    value.ljust(widths[index]) for index, value in enumerate(row)
+                )
+            )
+        return 0
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("List failed: %s", exc)
+        return 1
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    """Stop processes identified by a run report."""
+
+    try:
+        from .runtime import load_report, resolve_report_path, stop_local_report
+
+        report_path = resolve_report_path(args.run_identifier)
+        payload = load_report(report_path)
+        if (payload.get("metadata") or {}).get("orchestrator") == "ssh":
+            from .orchestration import host_actions_from_report
+
+            result = host_actions_from_report(payload, "stop")
+        else:
+            result = {"local": stop_local_report(payload)}
+        if args.stop_json:
+            print(json.dumps(result, sort_keys=True))
+        else:
+            signalled = sum(
+                len(item.get("pids", ())) for item in result.values()
+            )
+            print(
+                f"run={payload.get('run_id', '-')} stop requested; "
+                f"signalled_pids={signalled}"
+            )
+        return 0
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("Stop failed: %s", exc)
+        return 1
+
+
+def cmd_logs(args: argparse.Namespace) -> int:
+    """Read local or remote per-job logs."""
+
+    try:
+        from .runtime import load_report, read_report_logs, resolve_report_path
+
+        if args.lines <= 0:
+            raise ValueError("--lines must be positive")
+        report_path = resolve_report_path(args.run_identifier)
+        payload = load_report(report_path)
+        if (payload.get("metadata") or {}).get("orchestrator") == "ssh":
+            from .orchestration import host_actions_from_report
+
+            host_results = host_actions_from_report(
+                payload, "logs", job=args.job, lines=args.lines
+            )
+            logs = [
+                log
+                for result in host_results.values()
+                for log in result.get("logs", ())
+            ]
+        else:
+            logs = read_report_logs(
+                payload, job_name=args.job, lines=args.lines
+            )
+        if args.logs_json:
+            print(json.dumps(logs, sort_keys=True))
+            return 0
+        for index, log in enumerate(logs):
+            if index:
+                print()
+            host = f"{log.get('host')}/" if log.get("host") else ""
+            print(f"== {host}{log.get('name')} ({log.get('path')}) ==")
+            print(str(log.get("content") or ""), end="")
+        return 0
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.error("Logs failed: %s", exc)
         return 1
 
 
@@ -896,6 +1082,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cmd_launch(args)
     elif args.command == 'monitor':
         return cmd_monitor(args)
+    elif args.command == 'list':
+        return cmd_list(args)
+    elif args.command == 'stop':
+        return cmd_stop(args)
+    elif args.command == 'logs':
+        return cmd_logs(args)
     elif args.command == 'mps':
         return cmd_mps(args)
     elif args.command == 'green-run':

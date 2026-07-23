@@ -1,0 +1,50 @@
+version: 1
+git_check: true
+logs_dir: ./runs
+startup_timeout: 60
+
+hosts:
+  "406":
+    ssh: 406-tailscale
+    repo: ~/repos/nVertake
+    python: /home/l1ght/anaconda3/envs/torch/bin/python
+
+  gem12:
+    ssh: gem12-wsl-tailscale
+    repo: ~/repos/nVertake
+    python: /home/l1ght/miniforge3/envs/torch/bin/python
+
+defaults:
+  cwd: examples
+  device: auto
+  env:
+    PYTHONUNBUFFERED: "1"
+
+jobs:
+  - name: 406-small
+    host: "406"
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "8"]
+    sm_share: 30
+    memory_share: 0.30
+
+  - name: 406-large
+    host: "406"
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "8"]
+    sm_share: 70
+    memory_share: 0.65
+
+  - name: gem12-small
+    host: gem12
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "8"]
+    sm_share: 40
+    memory_share: 0.40
+
+  - name: gem12-large
+    host: gem12
+    script: throughput_worker.py
+    args: ["--size", "2048", "--seconds", "8"]
+    sm_share: 60
+    memory_share: 0.55

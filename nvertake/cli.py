@@ -201,6 +201,11 @@ Examples:
         dest='launch_dry_run',
         help='Validate the file and preview exact SM allocations without launching',
     )
+    launch_parser.add_argument(
+        '--show-secrets',
+        action='store_true',
+        help='Show credential-like environment values in --dry-run output',
+    )
     calibration_group = launch_parser.add_mutually_exclusive_group()
     calibration_group.add_argument(
         '--calibrate',
@@ -246,6 +251,19 @@ Examples:
         '--profile',
         action='store_true',
         help='Sample per-process utilization and optional DCGM profiling fields',
+    )
+    monitor_parser.add_argument(
+        '--output',
+        dest='monitor_output',
+        default=None,
+        metavar='SNAPSHOTS.jsonl',
+        help='Write every monitor snapshot as JSON Lines',
+    )
+    monitor_parser.add_argument(
+        '--append',
+        action='store_true',
+        dest='monitor_append',
+        help='Append to --output instead of replacing it',
     )
 
     list_parser = subparsers.add_parser(
@@ -582,13 +600,26 @@ def cmd_launch(args: argparse.Namespace) -> int:
                 config,
                 calibration=replace(config.calibration, enabled=False),
             )
+        if args.show_secrets and not args.launch_dry_run:
+            raise ValueError("--show-secrets requires --dry-run")
         if args.launch_dry_run:
-            print(json.dumps(plan_job_config(config), sort_keys=True))
+            print(
+                json.dumps(
+                    plan_job_config(
+                        config,
+                        reveal_secrets=bool(args.show_secrets),
+                    ),
+                    sort_keys=True,
+                )
+            )
             return 0
-        result = launch_jobs(config, quiet=bool(args.quiet))
+        from .signals import launch_signal_handlers
+
+        with launch_signal_handlers():
+            result = launch_jobs(config, quiet=bool(args.quiet))
         return result.exit_code
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
+    except KeyboardInterrupt as exc:
+        logger.info("%s", str(exc) or "Interrupted by user")
         return 130
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         logger.error("YAML job launch failed: %s", exc)
@@ -598,6 +629,7 @@ def cmd_launch(args: argparse.Namespace) -> int:
 def cmd_monitor(args: argparse.Namespace) -> int:
     """Print one or more enriched snapshots of a launch report."""
 
+    output_stream = None
     try:
         from .runtime import (
             TERMINAL_RUN_STATES,
@@ -609,7 +641,16 @@ def cmd_monitor(args: argparse.Namespace) -> int:
 
         if args.interval <= 0 or not math.isfinite(args.interval):
             raise ValueError("--interval must be positive")
+        if args.monitor_append and not args.monitor_output:
+            raise ValueError("--append requires --output")
         report_path = resolve_report_path(args.run_identifier)
+        output_path = (
+            Path(args.monitor_output).expanduser().resolve()
+            if args.monitor_output
+            else None
+        )
+        if output_path == report_path:
+            raise ValueError("--output must not overwrite the launch report")
         while True:
             payload = load_report(report_path)
             if (payload.get("metadata") or {}).get("orchestrator") == "ssh":
@@ -621,6 +662,22 @@ def cmd_monitor(args: argparse.Namespace) -> int:
                 )
             else:
                 snapshot = enrich_report(payload, profile=bool(args.profile))
+            if output_path is not None:
+                if output_stream is None:
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_stream = output_path.open(
+                        "a" if args.monitor_append else "w",
+                        encoding="utf-8",
+                    )
+                output_stream.write(
+                    json.dumps(
+                        snapshot,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
+                output_stream.flush()
             if args.monitor_json:
                 print(json.dumps(snapshot, sort_keys=True), flush=True)
             else:
@@ -634,6 +691,9 @@ def cmd_monitor(args: argparse.Namespace) -> int:
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         logger.error("Monitor failed: %s", exc)
         return 1
+    finally:
+        if output_stream is not None:
+            output_stream.close()
 
 
 def cmd_list(args: argparse.Namespace) -> int:

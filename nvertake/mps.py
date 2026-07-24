@@ -61,6 +61,7 @@ class StaticMPSCapability:
     compute_capability_major: Optional[int]
     chunk_sm_count: Optional[int]
     detail: str
+    driver_version: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -70,6 +71,7 @@ class StaticMPSCapability:
             "compute_capability_major": self.compute_capability_major,
             "chunk_sm_count": self.chunk_sm_count,
             "detail": self.detail,
+            "driver_version": self.driver_version,
         }
 
 
@@ -77,39 +79,75 @@ def inspect_static_mps_capability(
     device: int = 0,
     *,
     compute_capability_major: Optional[int] = None,
+    driver_version: Optional[int] = None,
     control_binary: str = MPS_CONTROL_BINARY,
 ) -> StaticMPSCapability:
-    """Check platform, architecture, and control-tool support for static MPS."""
+    """Check platform, driver, architecture, and tool support for static MPS."""
 
     controller = MPSController(device=device, control_binary=control_binary)
     platform_error = controller._platform_error()
     binary = controller._resolved_control_binary()
     if platform_error:
         return StaticMPSCapability(
-            False,
-            int(device),
-            binary,
-            compute_capability_major,
-            None,
-            platform_error,
+            available=False,
+            device=int(device),
+            control_binary=binary,
+            compute_capability_major=compute_capability_major,
+            chunk_sm_count=None,
+            detail=platform_error,
+            driver_version=driver_version,
         )
     if binary is None:
         return StaticMPSCapability(
-            False,
-            int(device),
-            None,
-            compute_capability_major,
-            None,
-            f"{control_binary!r} was not found",
+            available=False,
+            device=int(device),
+            control_binary=None,
+            compute_capability_major=compute_capability_major,
+            chunk_sm_count=None,
+            detail=f"{control_binary!r} was not found",
+            driver_version=driver_version,
+        )
+    if driver_version is None:
+        try:
+            from .green_context import _CudaDriver
+
+            driver = _CudaDriver()
+            driver.initialize()
+            driver_version = driver.driver_version()
+        except (OSError, RuntimeError) as exc:
+            return StaticMPSCapability(
+                available=False,
+                device=int(device),
+                control_binary=binary,
+                compute_capability_major=compute_capability_major,
+                chunk_sm_count=None,
+                detail=f"Cannot query CUDA driver API version: {exc}",
+                driver_version=None,
+            )
+    if driver_version < 13010:
+        major = driver_version // 1000
+        minor = (driver_version % 1000) // 10
+        return StaticMPSCapability(
+            available=False,
+            device=int(device),
+            control_binary=binary,
+            compute_capability_major=compute_capability_major,
+            chunk_sm_count=None,
+            detail=(
+                "Static MPS requires CUDA driver API 13.1 or newer; "
+                f"found {major}.{minor}"
+            ),
+            driver_version=driver_version,
         )
     if compute_capability_major is not None and compute_capability_major < 8:
         return StaticMPSCapability(
-            False,
-            int(device),
-            binary,
-            compute_capability_major,
-            None,
-            "Static MPS requires an Ampere-or-newer GPU",
+            available=False,
+            device=int(device),
+            control_binary=binary,
+            compute_capability_major=compute_capability_major,
+            chunk_sm_count=None,
+            detail="Static MPS requires an Ampere-or-newer GPU",
+            driver_version=driver_version,
         )
     try:
         result = subprocess.run(
@@ -121,12 +159,13 @@ def inspect_static_mps_capability(
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return StaticMPSCapability(
-            False,
-            int(device),
-            binary,
-            compute_capability_major,
-            None,
-            f"Cannot inspect MPS control options: {exc}",
+            available=False,
+            device=int(device),
+            control_binary=binary,
+            compute_capability_major=compute_capability_major,
+            chunk_sm_count=None,
+            detail=f"Cannot inspect MPS control options: {exc}",
+            driver_version=driver_version,
         )
     help_text = f"{result.stdout}\n{result.stderr}"
     supports_static = (
@@ -135,12 +174,13 @@ def inspect_static_mps_capability(
     )
     if not supports_static:
         return StaticMPSCapability(
-            False,
-            int(device),
-            binary,
-            compute_capability_major,
-            None,
-            "Installed MPS control tool does not expose static partitioning",
+            available=False,
+            device=int(device),
+            control_binary=binary,
+            compute_capability_major=compute_capability_major,
+            chunk_sm_count=None,
+            detail="Installed MPS control tool does not expose static partitioning",
+            driver_version=driver_version,
         )
     chunk_sm_count = (
         8
@@ -149,12 +189,13 @@ def inspect_static_mps_capability(
         else 4
     )
     return StaticMPSCapability(
-        True,
-        int(device),
-        binary,
-        compute_capability_major,
-        chunk_sm_count,
-        "Static SM partitioning is available",
+        available=True,
+        device=int(device),
+        control_binary=binary,
+        compute_capability_major=compute_capability_major,
+        chunk_sm_count=chunk_sm_count,
+        detail="Static SM partitioning is available",
+        driver_version=driver_version,
     )
 
 

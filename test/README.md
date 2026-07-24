@@ -197,12 +197,22 @@ nvertake launch examples/jobs.yaml --calibrate
 nvertake monitor
 ```
 
+Dry-run environment values with credential-like names are redacted unless
+`--show-secrets` is explicitly supplied. Active monitor samples can be retained
+as JSON Lines with:
+
+```bash
+nvertake monitor --watch --profile --output monitor-snapshots.jsonl
+```
+
 While the launch is active, `nvertake monitor --watch` displays PID, assigned
 SM count, framebuffer memory, reported throughput, and state.
 `nvertake monitor --profile --json` adds process SM/memory utilization and
 device/DCGM telemetry. After an injected launcher failure,
 `nvertake list --refresh` reconciles the stale report. The final report is
 stored below `examples/runs/<run-id>/report.json`.
+SIGTERM/SIGHUP integration checks should also confirm that the report ends in
+`cancelled` with the received signal name and that no worker PID remains.
 
 ## Recommended Workflow
 

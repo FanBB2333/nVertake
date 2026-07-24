@@ -29,6 +29,7 @@ from .mps import (
     plan_static_mps_chunks,
 )
 from .runtime import RunReport, process_create_time, utc_now
+from .security import redact_environment
 
 
 @dataclass(frozen=True)
@@ -634,6 +635,7 @@ def _resolve_backend(
     capability = inspect_static_mps_capability(
         device,
         compute_capability_major=diagnostics.compute_capability_major,
+        driver_version=diagnostics.driver_version,
     )
     if requested == "mps-static":
         if not capability.available:
@@ -686,13 +688,17 @@ def adjust_shares_for_throughput(
     return tuple(value * 100.0 for value in normalized)
 
 
-def plan_job_config(config: JobConfig) -> Dict[str, Any]:
+def plan_job_config(
+    config: JobConfig,
+    *,
+    reveal_secrets: bool = False,
+) -> Dict[str, Any]:
     """Preview every GPU group without creating a context or process."""
 
     if config.hosts:
         from .orchestration import plan_distributed_jobs
 
-        return plan_distributed_jobs(config)
+        return plan_distributed_jobs(config, reveal_secrets=reveal_secrets)
     config = _resolve_local_auto_devices(config)
 
     devices = []
@@ -748,7 +754,10 @@ def plan_job_config(config: JobConfig) -> Dict[str, Any]:
                     "script": str(job.script),
                     "args": list(job.args),
                     "cwd": str(job.cwd),
-                    "env": dict(job.env),
+                    "env": redact_environment(
+                        job.env,
+                        reveal_secrets=reveal_secrets,
+                    ),
                     "host": job.host,
                     "device": device,
                     "requested_sm_share": job.sm_share,
@@ -777,6 +786,7 @@ def plan_job_config(config: JobConfig) -> Dict[str, Any]:
         "dry_run": True,
         "creates_contexts": False,
         "starts_processes": False,
+        "secrets_redacted": not reveal_secrets,
         "config_path": str(config.path),
         "requested_backend": config.backend,
         "devices": devices,
@@ -898,6 +908,7 @@ def _launch_group(
     capability = inspect_static_mps_capability(
         device,
         compute_capability_major=diagnostics.compute_capability_major,
+        driver_version=diagnostics.driver_version,
     )
     if not capability.available or capability.chunk_sm_count is None:
         raise RuntimeError(
@@ -1216,16 +1227,20 @@ def launch_jobs(
     cancel_event = threading.Event()
     try:
         with ExitStack() as leases:
+            acquired_leases = []
             for device in sorted(groups):
-                leases.enter_context(
-                    GpuLease(
-                        device,
-                        run_id=run_id,
-                        timeout=config.lease_timeout,
+                acquired_leases.append(
+                    leases.enter_context(
+                        GpuLease(
+                            device,
+                            run_id=run_id,
+                            timeout=config.lease_timeout,
+                        )
                     )
                 )
             report.set_metadata(
                 leased_devices=sorted(groups),
+                leased_gpus=[lease.to_dict() for lease in acquired_leases],
                 lease_timeout=config.lease_timeout,
                 backend=config.backend,
                 backend_by_device={
@@ -1321,10 +1336,13 @@ def launch_jobs(
             )
             report.set_status("completed" if exit_code == 0 else "failed")
             return JobLaunchResult(exit_code, run_id, report_path)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as exc:
         cancel_event.set()
         report.mark_jobs_cancelled()
-        report.set_status("cancelled", error="Interrupted by user")
+        report.set_status(
+            "cancelled",
+            error=str(exc) or "Interrupted by user",
+        )
         raise
     except BaseException as exc:
         report.mark_unfinished_failed(str(exc))

@@ -252,6 +252,7 @@ def _host_payload(
     source: Mapping[str, Any],
     *,
     run_id: str,
+    reveal_secrets: bool = False,
 ) -> Dict[str, Any]:
     return {
         "run_id": run_id,
@@ -266,6 +267,7 @@ def _host_payload(
         "expected_git_commit": source["git"].get("commit"),
         "require_clean": bool(config.git_check),
         "config_sha256": source["config_sha256"],
+        "reveal_secrets": bool(reveal_secrets),
     }
 
 
@@ -289,7 +291,11 @@ def _prepare(
     return source, probes, jobs
 
 
-def plan_distributed_jobs(config: JobConfig) -> Dict[str, Any]:
+def plan_distributed_jobs(
+    config: JobConfig,
+    *,
+    reveal_secrets: bool = False,
+) -> Dict[str, Any]:
     """Probe hosts and preview exact remote driver allocations."""
 
     source, probes, jobs = _prepare(config)
@@ -308,6 +314,7 @@ def plan_distributed_jobs(config: JobConfig) -> Dict[str, Any]:
                     probes[name],
                     source,
                     run_id=run_id,
+                    reveal_secrets=reveal_secrets,
                 ),
                 timeout=60.0,
             )
@@ -318,6 +325,7 @@ def plan_distributed_jobs(config: JobConfig) -> Dict[str, Any]:
         "dry_run": True,
         "creates_contexts": False,
         "starts_processes": False,
+        "secrets_redacted": not reveal_secrets,
         "config_path": str(config.path),
         "config_sha256": source["config_sha256"],
         "git": source["git"],
@@ -649,7 +657,7 @@ def launch_distributed_jobs(
             return JobLaunchResult(130, run_id, report_path)
         report.set_status("completed")
         return JobLaunchResult(0, run_id, report_path)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as exc:
         for name in groups:
             try:
                 call_host(
@@ -665,7 +673,10 @@ def launch_distributed_jobs(
             except RuntimeError:
                 pass
         report.mark_jobs_cancelled()
-        report.set_status("cancelled", error="Interrupted by user")
+        report.set_status(
+            "cancelled",
+            error=str(exc) or "Interrupted by user",
+        )
         raise
     except BaseException as exc:
         report.mark_unfinished_failed(str(exc))

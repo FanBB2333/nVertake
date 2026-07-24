@@ -194,6 +194,7 @@ def inspect_scheduler_capabilities(
         "mps_static": inspect_static_mps_capability(
             diagnostics.device,
             compute_capability_major=diagnostics.compute_capability_major,
+            driver_version=diagnostics.driver_version,
         ).to_dict(),
         "work_queue_connections": {
             "available": True,

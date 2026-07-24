@@ -93,8 +93,14 @@ without starting anything, then launch:
 
 ```bash
 nvertake launch jobs.yaml --dry-run
+nvertake launch jobs.yaml --dry-run --show-secrets
 nvertake launch jobs.yaml
 ```
+
+Dry-run output replaces credential-like environment variables (for example,
+`API_TOKEN`, `PASSWORD`, and `AWS_SECRET_ACCESS_KEY`) with `<redacted>`.
+`--show-secrets` is an explicit opt-in intended for private terminals and must
+be used together with `--dry-run`.
 
 Each launch creates a run directory with one log per job, one cooperative metric
 file per job, and a live/final `report.json`. The launcher prints the run id and
@@ -104,6 +110,8 @@ report path. Inspect the latest local run, a particular run id, or a report file
 nvertake monitor
 nvertake monitor RUN_ID --watch
 nvertake monitor RUN_ID --profile --json
+nvertake monitor RUN_ID --watch --profile --output snapshots.jsonl
+nvertake monitor RUN_ID --output snapshots.jsonl --append
 nvertake monitor path/to/report.json --json
 nvertake list --refresh
 nvertake list --refresh --prune
@@ -118,7 +126,9 @@ by the platform, plus device-wide
 utilization, clocks, power, and temperature. When DCGM profiling is loaded, the
 JSON includes SM Active, SM Occupancy, Tensor, DRAM, FP32, and FP16 activity;
 otherwise it includes the exact unavailable reason instead of inventing a
-value.
+value. `--output` writes every complete snapshot as one JSON Lines record;
+without `--append`, an existing output file is replaced when monitoring starts.
+The launch report itself is protected from accidental overwrite.
 
 `nvertake list --refresh` reconciles reports with live launcher identities and
 marks abandoned non-terminal runs as failed. `--prune` removes only registry
@@ -131,6 +141,14 @@ Use `device: auto` to place jobs on the least-loaded compatible GPU. nVertake
 accounts for current free framebuffer memory, configured memory fractions,
 per-GPU job counts, and the driver-reported maximum Green process count before
 previewing the exact partition.
+GPU launch leases use the NVIDIA GPU UUID when `nvidia-smi` can resolve it.
+This prevents two launchers from targeting the same physical GPU through
+different ordinal mappings. The report records both the requested ordinal and
+the resolved UUID; ordinal locking remains the fallback when UUID discovery is
+unavailable.
+SIGTERM and SIGHUP received by a CLI or remote launcher are converted to an
+orderly cancellation, so workers are terminated and the report records the
+signal name instead of remaining non-terminal.
 When a WSL driver does not expose per-process framebuffer memory through
 `nvidia-smi`, a job calling `report_throughput()` supplies PyTorch allocator
 memory as a labeled fallback.
@@ -343,7 +361,8 @@ for the underlying CUDA mechanism and its architecture-specific constraints.
 
 CUDA 13.1 adds static MPS SM partitions on Ampere and newer native-Linux
 systems. Select it explicitly in a YAML file, or let `auto` select it only when
-the local control utility advertises the feature:
+the CUDA driver API is 13.1 or newer and the local control utility advertises
+the feature:
 
 ```yaml
 backend: mps-static  # alternatives: green, auto
@@ -358,9 +377,10 @@ the MPS server will distribute when clients connect; the live report records
 the SM count actually visible to each client.
 
 This path is experimental and must pass `doctor` before launch. It cannot run
-on WSL, on pre-Ampere GPUs, or with an older MPS control utility. The current
-406 host has an older control utility without static partitioning, while gem12
-does not expose MPS inside WSL, so both hosts continue to use `backend: green`.
+on WSL, on pre-Ampere GPUs, with a pre-13.1 CUDA driver API, or with an older
+MPS control utility. The current 406 host has a pre-13.1 driver API, while
+gem12 does not expose MPS inside WSL, so both hosts continue to use
+`backend: green`.
 Static MPS has unit coverage in this repository but still needs an eligible
 CUDA 13.1 native-Linux machine for hardware validation.
 

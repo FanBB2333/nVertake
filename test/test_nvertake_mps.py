@@ -122,10 +122,39 @@ class TestMPSConfiguration(unittest.TestCase):
             return_value=completed,
         ):
             capability = inspect_static_mps_capability(
-                0, compute_capability_major=9
+                0,
+                compute_capability_major=9,
+                driver_version=13010,
             )
         self.assertTrue(capability.available)
         self.assertEqual(capability.chunk_sm_count, 8)
+
+    def test_static_capability_rejects_pre_cuda_13_1_driver(self):
+        completed = subprocess.CompletedProcess(
+            ["nvidia-cuda-mps-control", "--help"],
+            0,
+            stdout="usage: nvidia-cuda-mps-control -d -S",
+            stderr="",
+        )
+        with patch.object(
+            MPSController, "_platform_error", return_value=None
+        ), patch.object(
+            MPSController,
+            "_resolved_control_binary",
+            return_value="/usr/bin/nvidia-cuda-mps-control",
+        ), patch(
+            "nvertake.mps.subprocess.run",
+            return_value=completed,
+        ) as run:
+            capability = inspect_static_mps_capability(
+                0,
+                compute_capability_major=9,
+                driver_version=12080,
+            )
+        self.assertFalse(capability.available)
+        self.assertIn("13.1", capability.detail)
+        self.assertEqual(capability.driver_version, 12080)
+        run.assert_not_called()
 
     def test_cli_parses_gpu_share_and_mps_priority(self):
         args = create_parser().parse_args(

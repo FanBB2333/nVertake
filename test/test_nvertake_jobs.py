@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import sys
 import tempfile
 import unittest
@@ -27,6 +28,7 @@ from nvertake.jobs import (
     adjust_shares_for_throughput,
     launch_jobs,
     load_job_config,
+    plan_job_config,
 )
 from nvertake.lease import GpuLease, GpuLeaseError
 from nvertake.metrics import (
@@ -44,6 +46,7 @@ from nvertake.runtime import (
     reconcile_report,
     stop_local_report,
 )
+from nvertake.signals import LaunchSignalInterrupt, launch_signal_handlers
 
 
 @dataclass
@@ -304,6 +307,42 @@ jobs:
                     )
                 },
             )
+
+    def test_dry_run_redacts_secret_environment_values_by_default(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            _write_worker(root_path / "worker.py")
+            config_path = root_path / "jobs.yaml"
+            config_path.write_text(
+                """jobs:
+  - name: worker
+    script: worker.py
+    sm_share: 1
+    env:
+      API_TOKEN: private-value
+      DATASET_NAME: public-value
+""",
+                encoding="utf-8",
+            )
+            config = load_job_config(str(config_path))
+            diagnostics = SimpleNamespace(
+                total_sm_count=12,
+                to_dict=lambda: {"device": 0, "total_sm_count": 12},
+            )
+            with patch(
+                "nvertake.jobs.inspect_green_device",
+                return_value=diagnostics,
+            ):
+                hidden = plan_job_config(config)
+                visible = plan_job_config(config, reveal_secrets=True)
+
+        hidden_env = hidden["devices"][0]["jobs"][0]["env"]
+        visible_env = visible["devices"][0]["jobs"][0]["env"]
+        self.assertEqual(hidden_env["API_TOKEN"], "<redacted>")
+        self.assertEqual(hidden_env["DATASET_NAME"], "public-value")
+        self.assertEqual(visible_env["API_TOKEN"], "private-value")
+        self.assertTrue(hidden["secrets_redacted"])
+        self.assertFalse(visible["secrets_redacted"])
 
 
 class TestMemoryAndMetrics(unittest.TestCase):
@@ -589,6 +628,62 @@ jobs:
         self.assertEqual(snapshot["jobs"][0]["status"], "cancelled")
         self.assertEqual(snapshot["jobs"][0]["exit_code"], -15)
 
+    def test_sigterm_interrupt_records_signal_name_and_cancelled_state(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            _write_worker(root_path / "worker.py")
+            config_path = root_path / "jobs.yaml"
+            config_path.write_text(
+                """report: report.json
+jobs:
+  - {name: worker, script: worker.py, sm_share: 1}
+""",
+                encoding="utf-8",
+            )
+            config = load_job_config(str(config_path))
+            with patch.dict(
+                os.environ,
+                {
+                    "NVERTAKE_RUNTIME_DIR": str(root_path / "registry"),
+                    "NVERTAKE_LEASE_DIR": str(root_path / "leases"),
+                },
+                clear=False,
+            ), patch(
+                "nvertake.jobs._launch_group",
+                side_effect=LaunchSignalInterrupt(signal.SIGTERM),
+            ), patch(
+                "nvertake.runtime.query_gpu_process_memory",
+                return_value={},
+            ):
+                with self.assertRaises(LaunchSignalInterrupt):
+                    launch_jobs(config, quiet=True)
+            report_payload = json.loads(
+                (root_path / "report.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(report_payload["status"], "cancelled")
+        self.assertEqual(report_payload["jobs"][0]["status"], "cancelled")
+        self.assertEqual(report_payload["error"], "Received SIGTERM")
+
+    def test_launch_signal_handlers_restore_previous_handlers(self):
+        previous = signal.getsignal(signal.SIGTERM)
+        with launch_signal_handlers():
+            handler = signal.getsignal(signal.SIGTERM)
+            self.assertTrue(callable(handler))
+            with self.assertRaisesRegex(LaunchSignalInterrupt, "SIGTERM"):
+                handler(signal.SIGTERM, None)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+
+    @unittest.skipUnless(hasattr(signal, "SIGHUP"), "SIGHUP is not available")
+    def test_launch_signal_handlers_preserve_ignored_signals(self):
+        previous = signal.getsignal(signal.SIGHUP)
+        try:
+            signal.signal(signal.SIGHUP, signal.SIG_IGN)
+            with launch_signal_handlers():
+                self.assertEqual(signal.getsignal(signal.SIGHUP), signal.SIG_IGN)
+        finally:
+            signal.signal(signal.SIGHUP, previous)
+
     def test_gpu_lease_rejects_a_second_launcher_and_releases_cleanly(self):
         with tempfile.TemporaryDirectory() as root:
             with patch.dict(
@@ -604,6 +699,82 @@ jobs:
                     first.release()
                 with GpuLease(0, run_id="third"):
                     pass
+
+    def test_gpu_lease_uses_uuid_across_different_ordinals(self):
+        with tempfile.TemporaryDirectory() as root:
+            with patch.dict(
+                os.environ,
+                {"NVERTAKE_LEASE_DIR": root},
+                clear=False,
+            ):
+                first = GpuLease(
+                    0,
+                    run_id="first",
+                    gpu_uuid="GPU-shared-uuid",
+                ).acquire()
+                try:
+                    second = GpuLease(
+                        7,
+                        run_id="second",
+                        gpu_uuid="GPU-shared-uuid",
+                    )
+                    self.assertEqual(first.path, second.path)
+                    with self.assertRaisesRegex(GpuLeaseError, "run first"):
+                        second.acquire()
+                    metadata = json.loads(
+                        first.path.read_text(encoding="utf-8")
+                    )
+                    self.assertEqual(metadata["gpu_uuid"], "GPU-shared-uuid")
+                finally:
+                    first.release()
+
+    def test_monitor_writes_json_lines_and_can_append(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            report_path = root_path / "report.json"
+            history_path = root_path / "snapshots.jsonl"
+            with patch.dict(
+                os.environ,
+                {"NVERTAKE_RUNTIME_DIR": str(root_path / "registry")},
+                clear=False,
+            ):
+                report = RunReport(report_path, run_id="history-run")
+                report.add_jobs([{"name": "worker", "status": "completed"}])
+                report.set_status("completed")
+                output = StringIO()
+                with patch(
+                    "nvertake.runtime.query_gpu_process_memory",
+                    return_value={},
+                ), redirect_stdout(output):
+                    first_code = main(
+                        [
+                            "monitor",
+                            str(report_path),
+                            "--json",
+                            "--output",
+                            str(history_path),
+                        ]
+                    )
+                    second_code = main(
+                        [
+                            "monitor",
+                            str(report_path),
+                            "--json",
+                            "--output",
+                            str(history_path),
+                            "--append",
+                        ]
+                    )
+            records = [
+                json.loads(line)
+                for line in history_path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(first_code, 0)
+        self.assertEqual(second_code, 0)
+        self.assertEqual(len(records), 2)
+        self.assertTrue(all(record["run_id"] == "history-run" for record in records))
+        self.assertTrue(all(record.get("observed_at") for record in records))
 
     def test_list_refresh_marks_a_disappeared_launcher_and_prunes_missing_report(self):
         with tempfile.TemporaryDirectory() as root:
@@ -693,6 +864,7 @@ jobs:
 
             def fake_call(_host, action, payload, **_kwargs):
                 self.assertEqual(action, "plan")
+                self.assertFalse(payload["reveal_secrets"])
                 self.assertEqual(
                     [job["device"] for job in payload["jobs"]], [0, 0]
                 )

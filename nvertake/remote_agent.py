@@ -32,6 +32,7 @@ from .runtime import (
     reconcile_report,
     utc_now,
 )
+from .signals import launch_signal_handlers
 
 
 def _git_metadata(repo: Path) -> Dict[str, Any]:
@@ -322,18 +323,19 @@ def _launch_fresh(payload: Mapping[str, Any]) -> Dict[str, Any]:
     config = _materialize_config(payload)
     repo = Path(str(payload["repo"])).expanduser().resolve()
     git = _assert_expected_git(payload, repo)
-    result = launch_jobs(
-        config,
-        quiet=True,
-        run_id=str(payload["run_id"]),
-        metadata={
-            "host": str(payload["host_name"]),
-            "launcher_start_ticks": _process_start_ticks(os.getpid()),
-            "git": git,
-            "config_sha256": payload.get("config_sha256"),
-            "source_git_commit": payload.get("expected_git_commit"),
-        },
-    )
+    with launch_signal_handlers():
+        result = launch_jobs(
+            config,
+            quiet=True,
+            run_id=str(payload["run_id"]),
+            metadata={
+                "host": str(payload["host_name"]),
+                "launcher_start_ticks": _process_start_ticks(os.getpid()),
+                "git": git,
+                "config_sha256": payload.get("config_sha256"),
+                "source_git_commit": payload.get("expected_git_commit"),
+            },
+        )
     return {
         "exit_code": result.exit_code,
         "run_id": result.run_id,
@@ -428,7 +430,10 @@ def handle(action: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         return probe(str(payload["repo"]))
     if action == "plan":
         config = _materialize_config(payload)
-        return plan_job_config(config)
+        return plan_job_config(
+            config,
+            reveal_secrets=bool(payload.get("reveal_secrets", False)),
+        )
     if action == "launch":
         while True:
             existing = _existing_launch(payload)

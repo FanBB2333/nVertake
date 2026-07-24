@@ -41,6 +41,7 @@ from nvertake.runtime import (
     format_monitor_table,
     list_registered_runs,
     read_report_logs,
+    reconcile_report,
     stop_local_report,
 )
 
@@ -629,6 +630,27 @@ jobs:
                 registry_exists = (registry / "orphan.json").exists()
         self.assertEqual(refreshed[0]["status"], "failed")
         self.assertFalse(registry_exists)
+
+    def test_reconcile_does_not_reconnect_a_terminal_distributed_run(self):
+        with tempfile.TemporaryDirectory() as root:
+            report_path = Path(root) / "report.json"
+            report_path.write_text(
+                json.dumps(
+                    {
+                        "run_id": "done",
+                        "status": "completed",
+                        "metadata": {"orchestrator": "ssh"},
+                        "jobs": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "nvertake.orchestration.refresh_distributed_snapshot"
+            ) as refresh:
+                snapshot = reconcile_report(report_path)
+        self.assertEqual(snapshot["status"], "completed")
+        refresh.assert_not_called()
 
 
 class TestRemoteOrchestration(unittest.TestCase):

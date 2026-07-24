@@ -123,7 +123,9 @@ def reconcile_report(path: Path) -> Dict[str, Any]:
 
     resolved = path.expanduser().resolve()
     payload = load_report(resolved)
-    if (payload.get("metadata") or {}).get("orchestrator") == "ssh":
+    if payload.get("status") in TERMINAL_RUN_STATES:
+        snapshot = copy.deepcopy(payload)
+    elif (payload.get("metadata") or {}).get("orchestrator") == "ssh":
         from .orchestration import refresh_distributed_snapshot
 
         snapshot = refresh_distributed_snapshot(payload)

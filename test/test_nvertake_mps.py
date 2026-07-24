@@ -17,8 +17,12 @@ from nvertake.mps import (
     MPSController,
     MPSPaths,
     MPSStatus,
+    StaticMPSCapability,
     configure_mps_client_env,
+    configure_static_mps_client_env,
     default_mps_paths,
+    inspect_static_mps_capability,
+    plan_static_mps_chunks,
     validate_active_thread_percentage,
 )
 from verification.run_mps_share_experiment import _wait_for_event
@@ -74,6 +78,54 @@ class TestMPSConfiguration(unittest.TestCase):
         second = default_mps_paths(1)
         self.assertNotEqual(first.pipe_directory, second.pipe_directory)
         self.assertNotEqual(first.log_directory, second.log_directory)
+
+    def test_static_chunk_plan_uses_every_complete_chunk(self):
+        self.assertEqual(
+            plan_static_mps_chunks(
+                (30, 70),
+                total_sm_count=78,
+                chunk_sm_count=8,
+            ),
+            (3, 6),
+        )
+
+    def test_static_client_env_selects_partition_and_clears_dynamic_limit(self):
+        paths = MPSPaths(Path("/tmp/static-pipe"), Path("/tmp/static-log"))
+        env = {
+            "CUDA_VISIBLE_DEVICES": "0",
+            "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE": "50",
+        }
+        configure_static_mps_client_env(
+            env,
+            paths=paths,
+            partition_id="GPU-test/Dpartition",
+        )
+        self.assertNotIn("CUDA_VISIBLE_DEVICES", env)
+        self.assertNotIn("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", env)
+        self.assertEqual(env["CUDA_MPS_SM_PARTITION"], "GPU-test/Dpartition")
+
+    def test_static_capability_detects_new_control_option(self):
+        completed = subprocess.CompletedProcess(
+            ["nvidia-cuda-mps-control", "--help"],
+            0,
+            stdout="usage: nvidia-cuda-mps-control -d -S --static-partitioning",
+            stderr="",
+        )
+        with patch.object(
+            MPSController, "_platform_error", return_value=None
+        ), patch.object(
+            MPSController,
+            "_resolved_control_binary",
+            return_value="/usr/bin/nvidia-cuda-mps-control",
+        ), patch(
+            "nvertake.mps.subprocess.run",
+            return_value=completed,
+        ):
+            capability = inspect_static_mps_capability(
+                0, compute_capability_major=9
+            )
+        self.assertTrue(capability.available)
+        self.assertEqual(capability.chunk_sm_count, 8)
 
     def test_cli_parses_gpu_share_and_mps_priority(self):
         args = create_parser().parse_args(
@@ -185,6 +237,61 @@ class TestMPSController(unittest.TestCase):
                 self.assertEqual(controller.probe_client({"A": "B"}), payload)
             probe_code = run.call_args.args[0][2]
             compile(probe_code, "<nvertake-mps-probe>", "exec")
+
+    def test_start_static_uses_static_daemon_flag(self):
+        with tempfile.TemporaryDirectory() as root:
+            controller = self._controller(root)
+            capability = StaticMPSCapability(
+                True,
+                2,
+                "/usr/bin/nvidia-cuda-mps-control",
+                9,
+                8,
+                "available",
+            )
+            completed = subprocess.CompletedProcess(
+                ["nvidia-cuda-mps-control", "-d", "-S"],
+                0,
+                stdout="",
+                stderr="",
+            )
+            lspart = subprocess.CompletedProcess(
+                ["nvidia-cuda-mps-control"],
+                0,
+                stdout="GPU Partition",
+                stderr="",
+            )
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch.object(
+                        controller,
+                        "_ensure_supported",
+                        return_value="/usr/bin/nvidia-cuda-mps-control",
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "nvertake.mps.inspect_static_mps_capability",
+                        return_value=capability,
+                    )
+                )
+                stack.enter_context(
+                    patch.object(controller, "is_running", side_effect=[False, True])
+                )
+                stack.enter_context(
+                    patch.object(controller, "_gpu_uuid", return_value="GPU-test")
+                )
+                stack.enter_context(
+                    patch.object(controller, "_run_control", return_value=lspart)
+                )
+                run = stack.enter_context(
+                    patch("nvertake.mps.subprocess.run", return_value=completed)
+                )
+                self.assertTrue(controller.start_static())
+            self.assertEqual(
+                run.call_args.args[0],
+                ["/usr/bin/nvidia-cuda-mps-control", "-d", "-S"],
+            )
 
     def test_probe_failure_includes_server_log(self):
         with tempfile.TemporaryDirectory() as root:

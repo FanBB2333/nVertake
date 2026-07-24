@@ -1,10 +1,13 @@
 version: 1
 logs_dir: ./runs
 startup_timeout: 60
+lease_timeout: 10
+backend: green
 
 defaults:
   cwd: .
   device: 0
+  work_queue_connections: 4
   env:
     PYTHONUNBUFFERED: "1"
 

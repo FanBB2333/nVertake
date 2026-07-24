@@ -5,11 +5,13 @@ from __future__ import annotations
 import math
 import os
 import re
+import statistics
 import sys
 import threading
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,7 +21,13 @@ import yaml
 
 from .diagnostics import inspect_green_device, plan_green_partitions
 from .green_process import GreenProcessRunResult, launch_green_process_scripts
-from .metrics import read_throughput_metric
+from .lease import GpuLease
+from .metrics import read_throughput_metric, read_throughput_samples
+from .mps import (
+    MPSController,
+    inspect_static_mps_capability,
+    plan_static_mps_chunks,
+)
 from .runtime import RunReport, process_create_time, utc_now
 
 
@@ -37,6 +45,7 @@ class JobSpec:
     cwd: Path
     log: Optional[Path]
     host: str = "local"
+    work_queue_connections: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +67,9 @@ class CalibrationSpec:
     duration: float = 5.0
     tolerance: float = 0.05
     damping: float = 0.5
+    warmup: float = 0.5
+    minimum_samples: int = 3
+    sample_window: int = 20
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,8 @@ class JobConfig:
     calibration: CalibrationSpec
     hosts: Mapping[str, HostSpec]
     git_check: bool = True
+    lease_timeout: float = 0.0
+    backend: str = "green"
 
 
 @dataclass(frozen=True)
@@ -228,6 +242,9 @@ def _parse_calibration(value: Any) -> CalibrationSpec:
     duration = float(mapping.get("duration", 5.0))
     tolerance = float(mapping.get("tolerance", 0.05))
     damping = float(mapping.get("damping", 0.5))
+    warmup = float(mapping.get("warmup", 0.5))
+    minimum_samples = int(mapping.get("minimum_samples", 3))
+    sample_window = int(mapping.get("sample_window", 20))
     if rounds <= 0:
         raise ValueError("calibration.rounds must be positive")
     if not math.isfinite(duration) or duration <= 0:
@@ -236,7 +253,36 @@ def _parse_calibration(value: Any) -> CalibrationSpec:
         raise ValueError("calibration.tolerance must be between 0 and 1")
     if not math.isfinite(damping) or not (0 < damping <= 1):
         raise ValueError("calibration.damping must be in (0, 1]")
-    return CalibrationSpec(enabled, rounds, duration, tolerance, damping)
+    if not math.isfinite(warmup) or warmup < 0 or warmup >= duration:
+        raise ValueError("calibration.warmup must be non-negative and less than duration")
+    if minimum_samples <= 0:
+        raise ValueError("calibration.minimum_samples must be positive")
+    if sample_window < minimum_samples:
+        raise ValueError(
+            "calibration.sample_window must be at least calibration.minimum_samples"
+        )
+    return CalibrationSpec(
+        enabled,
+        rounds,
+        duration,
+        tolerance,
+        damping,
+        warmup,
+        minimum_samples,
+        sample_window,
+    )
+
+
+def _work_queue_connections(value: Any, label: str) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        connections = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be an integer between 1 and 32") from exc
+    if not 1 <= connections <= 32:
+        raise ValueError(f"{label} must be an integer between 1 and 32")
+    return connections
 
 
 def load_job_config(path: str) -> JobConfig:
@@ -281,6 +327,10 @@ def load_job_config(path: str) -> JobConfig:
     default_env = _as_environment(defaults.get("env"), "defaults.env")
     default_memory = _memory_fraction(
         defaults.get("memory_share"), "defaults.memory_share"
+    )
+    default_work_queue_connections = _work_queue_connections(
+        defaults.get("work_queue_connections"),
+        "defaults.work_queue_connections",
     )
 
     raw_jobs = root.get("jobs")
@@ -366,6 +416,13 @@ def load_job_config(path: str) -> JobConfig:
                 cwd=cwd,
                 log=log,
                 host=host,
+                work_queue_connections=_work_queue_connections(
+                    item.get(
+                        "work_queue_connections",
+                        default_work_queue_connections,
+                    ),
+                    f"jobs[{index}].work_queue_connections",
+                ),
             )
         )
 
@@ -383,6 +440,12 @@ def load_job_config(path: str) -> JobConfig:
     raw_git_check = root.get("git_check", True)
     if not isinstance(raw_git_check, bool):
         raise ValueError("git_check must be true or false")
+    lease_timeout = float(root.get("lease_timeout", 0.0))
+    if not math.isfinite(lease_timeout) or lease_timeout < 0:
+        raise ValueError("lease_timeout must be non-negative")
+    backend = str(root.get("backend", "green")).strip().lower()
+    if backend not in ("green", "auto", "mps-static"):
+        raise ValueError("backend must be one of: green, auto, mps-static")
     return JobConfig(
         path=config_path,
         jobs=tuple(jobs),
@@ -392,6 +455,8 @@ def load_job_config(path: str) -> JobConfig:
         calibration=_parse_calibration(root.get("calibration")),
         hosts=hosts,
         git_check=raw_git_check,
+        lease_timeout=lease_timeout,
+        backend=backend,
     )
 
 
@@ -552,6 +617,32 @@ def _resolve_local_auto_devices(config: JobConfig) -> JobConfig:
     return replace(config, jobs=jobs)
 
 
+def _resolve_backend(
+    requested: str,
+    device: int,
+) -> Tuple[str, Optional[Any]]:
+    """Resolve the backend selected for one physical GPU."""
+
+    if requested == "green":
+        return "green", None
+    diagnostics = inspect_green_device(device)
+    capability = inspect_static_mps_capability(
+        device,
+        compute_capability_major=diagnostics.compute_capability_major,
+    )
+    if requested == "mps-static":
+        if not capability.available:
+            raise RuntimeError(
+                f"GPU {device} cannot use backend mps-static: {capability.detail}"
+            )
+        return "mps-static", capability
+    if requested == "auto":
+        if capability.available:
+            return "mps-static", capability
+        return "green", capability
+    raise ValueError(f"Unsupported scheduling backend: {requested}")
+
+
 def _normalized(values: Sequence[float]) -> Tuple[float, ...]:
     total = sum(values)
     if not math.isfinite(total) or total <= 0:
@@ -601,7 +692,33 @@ def plan_job_config(config: JobConfig) -> Dict[str, Any]:
 
     devices = []
     for device, group in _group_jobs(config.jobs).items():
-        if len(group) == 1:
+        backend, static_capability = _resolve_backend(config.backend, device)
+        if backend == "mps-static":
+            diagnostics = inspect_green_device(device)
+            assert static_capability is not None
+            chunk_sm_count = int(static_capability.chunk_sm_count)
+            chunk_counts = plan_static_mps_chunks(
+                (job.sm_share for job in group),
+                total_sm_count=diagnostics.total_sm_count,
+                chunk_sm_count=chunk_sm_count,
+            )
+            nominal_counts = tuple(
+                count * chunk_sm_count for count in chunk_counts
+            )
+            nominal_total = sum(nominal_counts)
+            lanes = [
+                {
+                    "index": index,
+                    "requested_share": job.sm_share,
+                    "sm_count": nominal_counts[index],
+                    "total_sm_count": diagnostics.total_sm_count,
+                    "actual_sm_share": nominal_counts[index] / nominal_total,
+                    "static_chunk_count": chunk_counts[index],
+                    "static_chunk_sm_count": chunk_sm_count,
+                }
+                for index, job in enumerate(group)
+            ]
+        elif len(group) == 1:
             diagnostics = inspect_green_device(device)
             lanes = [
                 {
@@ -631,14 +748,24 @@ def plan_job_config(config: JobConfig) -> Dict[str, Any]:
                     "device": device,
                     "requested_sm_share": job.sm_share,
                     "memory_share": job.memory_share,
+                    "work_queue_connections": job.work_queue_connections,
+                    "backend": backend,
                     "sm_count": lane["sm_count"],
                     "actual_sm_share": lane["actual_sm_share"],
                 }
             )
         devices.append(
             {
+                "backend": backend,
+                "requested_backend": config.backend,
                 "device": diagnostics.to_dict(),
                 "jobs": planned_jobs,
+                "unassigned_static_sm_count": (
+                    diagnostics.total_sm_count
+                    - sum(int(item["sm_count"]) for item in lanes)
+                    if backend == "mps-static"
+                    else 0
+                ),
             }
         )
     return {
@@ -646,6 +773,7 @@ def plan_job_config(config: JobConfig) -> Dict[str, Any]:
         "creates_contexts": False,
         "starts_processes": False,
         "config_path": str(config.path),
+        "requested_backend": config.backend,
         "devices": devices,
     }
 
@@ -700,11 +828,17 @@ def _launch_group(
     on_ready: Any = None,
     on_exit: Any = None,
     cancel_event: Any = None,
+    backend: str = "green",
+    mps_root: Optional[Path] = None,
 ) -> GreenProcessRunResult:
     environments = []
     arguments = []
     for job in group:
         environment = dict(job.env)
+        if job.work_queue_connections is not None:
+            environment["CUDA_DEVICE_MAX_CONNECTIONS"] = str(
+                job.work_queue_connections
+            )
         if calibration is not None:
             environment.update(
                 {
@@ -722,25 +856,96 @@ def _launch_group(
         if len(group) == 1
         else tuple(shares[job.name] for job in group)
     )
-    return launch_green_process_scripts(
-        [str(job.script) for job in group],
-        shares=group_shares,
-        script_args=arguments,
-        device=group[0].device,
-        startup_timeout=startup_timeout,
-        quiet=quiet,
-        memory_shares=[job.memory_share for job in group],
-        environments=environments,
-        working_directories=[str(job.cwd) for job in group],
-        log_paths=log_paths,
-        job_names=[job.name for job in group],
-        metrics_paths=metrics_paths,
-        run_timeout=(calibration.duration if calibration is not None else None),
-        timeout_is_success=(calibration is not None),
-        on_ready=on_ready,
-        on_exit=on_exit,
-        cancel_event=cancel_event,
+    launcher_kwargs: Dict[str, Any] = {
+        "shares": group_shares,
+        "script_args": arguments,
+        "device": group[0].device,
+        "startup_timeout": startup_timeout,
+        "quiet": quiet,
+        "memory_shares": [job.memory_share for job in group],
+        "environments": environments,
+        "working_directories": [str(job.cwd) for job in group],
+        "log_paths": log_paths,
+        "job_names": [job.name for job in group],
+        "metrics_paths": metrics_paths,
+        "run_timeout": (calibration.duration if calibration is not None else None),
+        "timeout_is_success": (calibration is not None),
+        "on_ready": on_ready,
+        "on_exit": on_exit,
+        "cancel_event": cancel_event,
+    }
+    if backend == "green":
+        return launch_green_process_scripts(
+            [str(job.script) for job in group],
+            **launcher_kwargs,
+        )
+    if backend != "mps-static":
+        raise ValueError(f"Unsupported launch backend: {backend}")
+    if mps_root is None:
+        raise ValueError("Static MPS launch requires a run-specific MPS directory")
+
+    device = int(group[0].device)
+    diagnostics = inspect_green_device(device)
+    capability = inspect_static_mps_capability(
+        device,
+        compute_capability_major=diagnostics.compute_capability_major,
     )
+    if not capability.available or capability.chunk_sm_count is None:
+        raise RuntimeError(
+            f"GPU {device} cannot use backend mps-static: {capability.detail}"
+        )
+    chunks = plan_static_mps_chunks(
+        group_shares,
+        total_sm_count=diagnostics.total_sm_count,
+        chunk_sm_count=capability.chunk_sm_count,
+    )
+    controller = MPSController(
+        device=device,
+        pipe_directory=str(mps_root / "pipe"),
+        log_directory=str(mps_root / "log"),
+    )
+    started = False
+    partitions: List[str] = []
+    primary_error: Optional[BaseException] = None
+    try:
+        started = controller.start_static()
+        gpu_uuid = controller._gpu_uuid()
+        for count in chunks:
+            partitions.append(
+                controller.create_static_partition(count, gpu_uuid=gpu_uuid)
+            )
+        static_environments = []
+        for environment, partition_id in zip(environments, partitions):
+            configured = dict(environment)
+            controller.static_client_environment(
+                configured,
+                partition_id=partition_id,
+            )
+            static_environments.append(configured)
+        launcher_kwargs["environments"] = static_environments
+        launcher_kwargs["plain"] = True
+        launcher_kwargs["preserve_cuda_environment"] = True
+        return launch_green_process_scripts(
+            [str(job.script) for job in group],
+            **launcher_kwargs,
+        )
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        cleanup_error: Optional[BaseException] = None
+        for partition_id in reversed(partitions):
+            try:
+                controller.remove_static_partition(partition_id)
+            except BaseException as exc:
+                cleanup_error = cleanup_error or exc
+        if started:
+            try:
+                controller.stop(force=cleanup_error is not None)
+            except BaseException as exc:
+                cleanup_error = cleanup_error or exc
+        if primary_error is None and cleanup_error is not None:
+            raise cleanup_error
 
 
 def _wait_futures(
@@ -763,6 +968,7 @@ def _calibrate(
     run_dir: Path,
     *,
     quiet: bool,
+    backends: Mapping[int, str],
     cancel_event: Any = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
     calibration = config.calibration
@@ -790,6 +996,13 @@ def _calibrate(
                     calibration=calibration,
                     calibration_round=round_index,
                     cancel_event=cancel_event,
+                    backend=backends[device],
+                    mps_root=(
+                        run_dir
+                        / "mps"
+                        / f"calibration-round-{round_index}"
+                        / f"gpu-{device}"
+                    ),
                 )
             try:
                 results = _wait_futures(futures)
@@ -823,9 +1036,43 @@ def _calibrate(
                 raise RuntimeError(
                     f"GPU {device} calibration jobs reported incompatible units: {sorted(units)}"
                 )
-            observed = tuple(
-                float(metric["throughput"]) for metric in metrics if metric is not None
-            )
+            observed_values = []
+            sample_details = []
+            for path, metric in zip(metrics_paths, metrics):
+                assert metric is not None
+                samples = list(read_throughput_samples(Path(path)))
+                if samples:
+                    first_time = float(samples[0].get("monotonic_time") or 0.0)
+                    warmed = [
+                        sample
+                        for sample in samples
+                        if float(sample.get("monotonic_time") or 0.0)
+                        >= first_time + calibration.warmup
+                    ]
+                else:
+                    warmed = []
+                selected = warmed[-calibration.sample_window :]
+                if len(selected) < calibration.minimum_samples:
+                    raise RuntimeError(
+                        f"GPU {device} calibration requires at least "
+                        f"{calibration.minimum_samples} throughput samples per job "
+                        f"after warmup; received {len(selected)}"
+                    )
+                values = [float(sample["throughput"]) for sample in selected]
+                median = float(statistics.median(values))
+                deviations = [abs(value - median) for value in values]
+                mad = float(statistics.median(deviations))
+                observed_values.append(median)
+                sample_details.append(
+                    {
+                        "count": len(selected),
+                        "median": median,
+                        "median_absolute_deviation": mad,
+                        "first_updated_at": selected[0].get("updated_at"),
+                        "last_updated_at": selected[-1].get("updated_at"),
+                    }
+                )
+            observed = tuple(observed_values)
             observed_ratios = _normalized(observed)
             targets = tuple(job.target_share for job in group)
             target_ratios = _normalized(targets)
@@ -849,6 +1096,7 @@ def _calibrate(
                     "device": device,
                     "partition_sm_counts": list(result.partition_sm_counts),
                     "observed_throughput": list(observed),
+                    "throughput_samples": sample_details,
                     "throughput_unit": next(iter(units)),
                     "observed_ratios": list(observed_ratios),
                     "target_ratios": list(target_ratios),
@@ -868,6 +1116,9 @@ def _calibrate(
         "completed_rounds": len(records),
         "tolerance": calibration.tolerance,
         "damping": calibration.damping,
+        "warmup": calibration.warmup,
+        "minimum_samples": calibration.minimum_samples,
+        "sample_window": calibration.sample_window,
         "rounds": records,
         "final_sm_shares": dict(effective),
     }
@@ -906,6 +1157,14 @@ def launch_jobs(
         metadata=launch_metadata,
     )
     groups = _group_jobs(config.jobs)
+    try:
+        backend_by_device = {
+            device: _resolve_backend(config.backend, device)[0]
+            for device in groups
+        }
+    except BaseException as exc:
+        report.set_status("failed", error=str(exc))
+        raise
     paths: Dict[int, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
         device: _group_paths(group, run_dir) for device, group in groups.items()
     }
@@ -926,6 +1185,8 @@ def launch_jobs(
                     "target_throughput_share": job.target_share,
                     "effective_sm_share": job.sm_share,
                     "memory_share": job.memory_share,
+                    "work_queue_connections": job.work_queue_connections,
+                    "backend": backend_by_device[device],
                     "log_path": log_path,
                     "metrics_path": metrics_path,
                 }
@@ -938,91 +1199,118 @@ def launch_jobs(
     effective = {job.name: job.sm_share for job in config.jobs}
     cancel_event = threading.Event()
     try:
-        if config.calibration.enabled:
-            report.set_status("calibrating")
-            effective, calibration_details = _calibrate(
-                config, run_dir, quiet=quiet, cancel_event=cancel_event
-            )
-            report.set_calibration(calibration_details)
-            for job in config.jobs:
-                report.update_job(
-                    job.name,
-                    effective_sm_share=effective[job.name],
-                )
-
-        report.set_status("running")
-        with ThreadPoolExecutor(max_workers=len(groups)) as executor:
-            futures: Dict[int, Future] = {}
-            for device, group in groups.items():
-                log_paths, metrics_paths = paths[device]
-                for job in group:
-                    report.update_job(job.name, status="starting")
-
-                def on_ready(
-                    metadata: Tuple[Dict[str, Any], ...],
-                    sm_counts: Tuple[int, ...],
-                    *,
-                    current_group: Tuple[JobSpec, ...] = group,
-                ) -> None:
-                    total_sms = sum(sm_counts)
-                    for index, job in enumerate(current_group):
-                        report.update_job(
-                            job.name,
-                            status="running",
-                            pid=int(metadata[index]["pid"]),
-                            sm_count=sm_counts[index],
-                            actual_sm_share=sm_counts[index] / total_sms,
-                            started_at=utc_now(),
-                        )
-
-                def on_exit(
-                    lane_index: int,
-                    return_code: Optional[int],
-                    status: str,
-                    *,
-                    current_group: Tuple[JobSpec, ...] = group,
-                ) -> None:
-                    job = current_group[lane_index]
-                    report.update_job(
-                        job.name,
-                        status=status,
-                        exit_code=return_code,
-                        ended_at=utc_now(),
+        with ExitStack() as leases:
+            for device in sorted(groups):
+                leases.enter_context(
+                    GpuLease(
+                        device,
+                        run_id=run_id,
+                        timeout=config.lease_timeout,
                     )
+                )
+            report.set_metadata(
+                leased_devices=sorted(groups),
+                lease_timeout=config.lease_timeout,
+                backend=config.backend,
+                backend_by_device={
+                    str(device): backend
+                    for device, backend in backend_by_device.items()
+                },
+            )
 
-                futures[device] = executor.submit(
-                    _launch_group,
-                    group,
-                    effective,
-                    startup_timeout=config.startup_timeout,
-                    log_paths=log_paths,
-                    metrics_paths=metrics_paths,
+            if config.calibration.enabled:
+                report.set_status("calibrating")
+                effective, calibration_details = _calibrate(
+                    config,
+                    run_dir,
                     quiet=quiet,
-                    on_ready=on_ready,
-                    on_exit=on_exit,
+                    backends=backend_by_device,
                     cancel_event=cancel_event,
                 )
-            try:
-                results = _wait_futures(futures, report=report)
-            except KeyboardInterrupt:
-                cancel_event.set()
-                raise
+                report.set_calibration(calibration_details)
+                for job in config.jobs:
+                    report.update_job(
+                        job.name,
+                        effective_sm_share=effective[job.name],
+                    )
 
-        report.refresh_live_stats()
-        exit_code = next(
-            (
-                result.exit_code
-                for _device, result in sorted(results.items())
-                if result.exit_code != 0
-            ),
-            0,
-        )
-        report.set_status("completed" if exit_code == 0 else "failed")
-        return JobLaunchResult(exit_code, run_id, report_path)
+            report.set_status("running")
+            with ThreadPoolExecutor(max_workers=len(groups)) as executor:
+                futures: Dict[int, Future] = {}
+                for device, group in groups.items():
+                    log_paths, metrics_paths = paths[device]
+                    for job in group:
+                        report.update_job(job.name, status="starting")
+
+                    def on_ready(
+                        metadata: Tuple[Dict[str, Any], ...],
+                        sm_counts: Tuple[int, ...],
+                        *,
+                        current_group: Tuple[JobSpec, ...] = group,
+                    ) -> None:
+                        total_sms = sum(sm_counts)
+                        for index, job in enumerate(current_group):
+                            report.update_job(
+                                job.name,
+                                status="running",
+                                pid=int(metadata[index]["pid"]),
+                                sm_count=sm_counts[index],
+                                actual_sm_share=sm_counts[index] / total_sms,
+                                started_at=utc_now(),
+                            )
+
+                    def on_exit(
+                        lane_index: int,
+                        return_code: Optional[int],
+                        status: str,
+                        *,
+                        current_group: Tuple[JobSpec, ...] = group,
+                    ) -> None:
+                        job = current_group[lane_index]
+                        report.update_job(
+                            job.name,
+                            status=status,
+                            exit_code=return_code,
+                            ended_at=utc_now(),
+                        )
+
+                    futures[device] = executor.submit(
+                        _launch_group,
+                        group,
+                        effective,
+                        startup_timeout=config.startup_timeout,
+                        log_paths=log_paths,
+                        metrics_paths=metrics_paths,
+                        quiet=quiet,
+                        on_ready=on_ready,
+                        on_exit=on_exit,
+                        cancel_event=cancel_event,
+                        backend=backend_by_device[device],
+                        mps_root=run_dir / "mps" / f"gpu-{device}",
+                    )
+                try:
+                    results = _wait_futures(futures, report=report)
+                except KeyboardInterrupt:
+                    cancel_event.set()
+                    raise
+
+            report.refresh_live_stats()
+            exit_code = next(
+                (
+                    result.exit_code
+                    for _device, result in sorted(results.items())
+                    if result.exit_code != 0
+                ),
+                0,
+            )
+            report.set_status("completed" if exit_code == 0 else "failed")
+            return JobLaunchResult(exit_code, run_id, report_path)
     except KeyboardInterrupt:
         cancel_event.set()
+        report.mark_jobs_cancelled()
         report.set_status("cancelled", error="Interrupted by user")
         raise
     except BaseException as exc:
+        report.mark_unfinished_failed(str(exc))
         report.set_status("failed", error=str(exc))
         raise

@@ -34,6 +34,12 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     os.replace(str(temporary), str(path))
 
 
+def write_report_snapshot(path: Path, payload: Mapping[str, Any]) -> None:
+    """Persist a reconciled report snapshot atomically."""
+
+    _atomic_write_json(path.expanduser().resolve(), payload)
+
+
 def runtime_registry_directory() -> Path:
     configured = os.environ.get("NVERTAKE_RUNTIME_DIR")
     if configured:
@@ -98,7 +104,56 @@ def load_report(path: Path) -> Dict[str, Any]:
     return payload
 
 
-def list_registered_runs() -> List[Dict[str, Any]]:
+def _launcher_identity_is_alive(payload: Mapping[str, Any]) -> bool:
+    metadata = dict(payload.get("metadata") or {})
+    launcher_pid = metadata.get("launcher_pid")
+    if not isinstance(launcher_pid, int) or launcher_pid <= 0:
+        return False
+    if not _pid_is_alive(launcher_pid):
+        return False
+    expected = metadata.get("launcher_create_time")
+    if expected is None:
+        return True
+    actual = process_create_time(launcher_pid)
+    return actual is None or abs(actual - float(expected)) < 0.01
+
+
+def reconcile_report(path: Path) -> Dict[str, Any]:
+    """Refresh a report and mark a local non-terminal orphan as failed."""
+
+    resolved = path.expanduser().resolve()
+    payload = load_report(resolved)
+    if (payload.get("metadata") or {}).get("orchestrator") == "ssh":
+        from .orchestration import refresh_distributed_snapshot
+
+        snapshot = refresh_distributed_snapshot(payload)
+    else:
+        snapshot = enrich_report(payload)
+    if (
+        snapshot.get("status") not in TERMINAL_RUN_STATES
+        and not _launcher_identity_is_alive(snapshot)
+    ):
+        ended_at = utc_now()
+        snapshot["status"] = "failed"
+        snapshot["error"] = "Launcher process is no longer running"
+        snapshot["ended_at"] = ended_at
+        for job in snapshot.get("jobs", []):
+            if job.get("status") not in TERMINAL_JOB_STATES:
+                job["status"] = "failed"
+                job["observed_status"] = "exited"
+                job["ended_at"] = ended_at
+    snapshot["updated_at"] = utc_now()
+    if snapshot.get("status") in TERMINAL_RUN_STATES and not snapshot.get("ended_at"):
+        snapshot["ended_at"] = utc_now()
+    write_report_snapshot(resolved, snapshot)
+    return snapshot
+
+
+def list_registered_runs(
+    *,
+    refresh: bool = False,
+    prune: bool = False,
+) -> List[Dict[str, Any]]:
     """Return newest-first summaries for locally registered reports."""
 
     root = runtime_registry_directory()
@@ -112,8 +167,13 @@ def list_registered_runs() -> List[Dict[str, Any]]:
         try:
             entry = json.loads(registry.read_text(encoding="utf-8"))
             report_path = Path(entry["report_path"]).expanduser().resolve()
-            report = load_report(report_path)
+            report = reconcile_report(report_path) if refresh else load_report(report_path)
         except (KeyError, TypeError, json.JSONDecodeError, OSError, RuntimeError):
+            if prune:
+                try:
+                    registry.unlink()
+                except OSError:
+                    pass
             continue
         summaries.append(
             {
@@ -276,11 +336,35 @@ def read_report_logs(
     return logs
 
 
-def enrich_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
+def enrich_report(
+    payload: Mapping[str, Any],
+    *,
+    profile: bool = False,
+) -> Dict[str, Any]:
     """Add live memory, cooperative throughput, and liveness to a snapshot."""
 
     snapshot = copy.deepcopy(dict(payload))
     memory = query_gpu_process_memory()
+    process_utilization: Dict[Any, Dict[str, Any]] = {}
+    device_telemetry: List[Dict[str, Any]] = []
+    if profile:
+        from .telemetry import (
+            query_dcgm_profile,
+            query_device_utilization,
+            query_process_utilization,
+        )
+
+        process_utilization = query_process_utilization()
+        devices = sorted(
+            {
+                int(job["device"])
+                for job in snapshot.get("jobs", [])
+                if isinstance(job.get("device"), int) and not job.get("remote")
+            }
+        )
+        device_telemetry = query_device_utilization(devices)
+        for record in device_telemetry:
+            record["dcgm"] = query_dcgm_profile(int(record["device"]))
     for job in snapshot.get("jobs", []):
         if job.get("remote"):
             job["observed_status"] = job.get("observed_status") or job.get(
@@ -288,6 +372,16 @@ def enrich_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
             )
             continue
         pid = job.get("pid")
+        device = job.get("device")
+        utilization = (
+            process_utilization.get((device, pid))
+            if isinstance(device, int) and isinstance(pid, int)
+            else None
+        )
+        if utilization is not None:
+            job["sm_util_percent"] = utilization.get("sm_util_percent")
+            job["memory_util_percent"] = utilization.get("memory_util_percent")
+            job["utilization_source"] = utilization.get("source")
         if isinstance(pid, int) and pid in memory:
             job["gpu_memory_mib"] = memory[pid]
             job["gpu_memory_source"] = "nvidia-smi"
@@ -325,6 +419,12 @@ def enrich_report(payload: Mapping[str, Any]) -> Dict[str, Any]:
         else:
             job["observed_status"] = job.get("status", "unknown")
     snapshot["observed_at"] = utc_now()
+    if profile:
+        snapshot["telemetry"] = {
+            "profile": True,
+            "devices": device_telemetry,
+            "process_sample_count": len(process_utilization),
+        }
     return snapshot
 
 
@@ -420,6 +520,42 @@ class RunReport:
             self._data["calibration"] = dict(calibration)
             self._write_locked()
 
+    def mark_jobs_cancelled(self) -> None:
+        """Convert active or signal-failed jobs to a terminal cancelled state."""
+
+        with self._lock:
+            ended_at = utc_now()
+            changed = False
+            for job in self._data["jobs"]:
+                status = job.get("status")
+                exit_code = job.get("exit_code")
+                signal_failed = (
+                    status == "failed"
+                    and isinstance(exit_code, int)
+                    and exit_code < 0
+                )
+                if status not in TERMINAL_JOB_STATES or signal_failed:
+                    job["status"] = "cancelled"
+                    job["ended_at"] = job.get("ended_at") or ended_at
+                    changed = True
+            if changed:
+                self._write_locked()
+
+    def mark_unfinished_failed(self, error: str) -> None:
+        """Mark jobs that never reached a terminal state after launcher failure."""
+
+        with self._lock:
+            ended_at = utc_now()
+            changed = False
+            for job in self._data["jobs"]:
+                if job.get("status") not in TERMINAL_JOB_STATES:
+                    job["status"] = "failed"
+                    job["error"] = error
+                    job["ended_at"] = ended_at
+                    changed = True
+            if changed:
+                self._write_locked()
+
     def set_metadata(self, **changes: Any) -> None:
         with self._lock:
             self._data["metadata"].update(changes)
@@ -472,21 +608,45 @@ class RunReport:
 def format_monitor_table(payload: Mapping[str, Any]) -> str:
     jobs: List[Mapping[str, Any]] = list(payload.get("jobs", []))
     show_host = any(job.get("host") for job in jobs)
-    headers = (
-        ("HOST", "NAME", "GPU", "PID", "SM", "VRAM MiB", "THROUGHPUT", "STATUS")
-        if show_host
-        else ("NAME", "GPU", "PID", "SM", "VRAM MiB", "THROUGHPUT", "STATUS")
+    show_utilization = any(
+        job.get("sm_util_percent") is not None
+        or job.get("memory_util_percent") is not None
+        for job in jobs
     )
+    headers = ["NAME", "GPU", "PID", "SM"]
+    if show_utilization:
+        headers.extend(("SM%", "MEM%"))
+    headers.extend(("VRAM MiB", "THROUGHPUT", "STATUS"))
+    if show_host:
+        headers.insert(0, "HOST")
     rows = []
     for job in jobs:
         throughput = "-"
         if job.get("throughput") is not None:
             throughput = f"{float(job['throughput']):.3g} {job.get('throughput_unit') or ''}".strip()
-        values = (
+        values_list = [
             str(job.get("name", "-")),
             str(job.get("device", "-")),
             str(job.get("pid") if job.get("pid") is not None else "-"),
             str(job.get("sm_count") if job.get("sm_count") is not None else "-"),
+        ]
+        if show_utilization:
+            values_list.extend(
+                (
+                    (
+                        f"{float(job['sm_util_percent']):.1f}"
+                        if job.get("sm_util_percent") is not None
+                        else "-"
+                    ),
+                    (
+                        f"{float(job['memory_util_percent']):.1f}"
+                        if job.get("memory_util_percent") is not None
+                        else "-"
+                    ),
+                )
+            )
+        values_list.extend(
+            (
             str(
                 job.get("gpu_memory_mib")
                 if job.get("gpu_memory_mib") is not None
@@ -494,15 +654,20 @@ def format_monitor_table(payload: Mapping[str, Any]) -> str:
             ),
             throughput,
             str(job.get("observed_status") or job.get("status", "unknown")),
+            )
         )
+        values = tuple(values_list)
         if show_host:
             values = (str(job.get("host", "-")),) + values
         rows.append(values)
-    widths = [len(value) for value in headers]
+    header_values = tuple(headers)
+    widths = [len(value) for value in header_values]
     for row in rows:
         for index, value in enumerate(row):
             widths[index] = max(widths[index], len(value))
-    line = "  ".join(value.ljust(widths[index]) for index, value in enumerate(headers))
+    line = "  ".join(
+        value.ljust(widths[index]) for index, value in enumerate(header_values)
+    )
     separator = "  ".join("-" * width for width in widths)
     body = [
         "  ".join(value.ljust(widths[index]) for index, value in enumerate(row))

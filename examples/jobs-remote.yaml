@@ -2,6 +2,8 @@ version: 1
 git_check: true
 logs_dir: ./runs
 startup_timeout: 60
+lease_timeout: 10
+backend: green
 
 hosts:
   "406":
@@ -17,6 +19,7 @@ hosts:
 defaults:
   cwd: examples
   device: auto
+  work_queue_connections: 4
   env:
     PYTHONUNBUFFERED: "1"
 

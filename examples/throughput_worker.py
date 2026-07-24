@@ -48,6 +48,13 @@ def main() -> None:
                 "seconds": elapsed,
                 "throughput": throughput,
                 "memory_share": os.environ.get("NVERTAKE_MEMORY_SHARE"),
+                "work_queue_connections": os.environ.get(
+                    "CUDA_DEVICE_MAX_CONNECTIONS"
+                ),
+                "backend": os.environ.get(
+                    "NVERTAKE_PROCESS_BACKEND",
+                    "green",
+                ),
                 "actual_memory_fraction": torch.cuda.get_per_process_memory_fraction(0),
             },
             sort_keys=True,

@@ -242,6 +242,11 @@ Examples:
         metavar='SECONDS',
         help='Watch refresh interval (default: 1)',
     )
+    monitor_parser.add_argument(
+        '--profile',
+        action='store_true',
+        help='Sample per-process utilization and optional DCGM profiling fields',
+    )
 
     list_parser = subparsers.add_parser(
         'list',
@@ -259,6 +264,16 @@ Examples:
         default=20,
         metavar='COUNT',
         help='Maximum number of runs to show (default: 20)',
+    )
+    list_parser.add_argument(
+        '--refresh',
+        action='store_true',
+        help='Refresh live state and mark reports whose launcher disappeared',
+    )
+    list_parser.add_argument(
+        '--prune',
+        action='store_true',
+        help='Remove registry entries whose report is missing or invalid',
     )
 
     stop_parser = subparsers.add_parser(
@@ -507,17 +522,23 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         from .diagnostics import (
             format_doctor_report,
+            format_scheduler_capabilities,
             inspect_green_device,
+            inspect_scheduler_capabilities,
             plan_green_partitions,
         )
 
         if args.doctor_shares is not None:
             shares = _parse_share_list(args.doctor_shares)
             plan = plan_green_partitions(shares, device=args.device)
+            capabilities = inspect_scheduler_capabilities(plan.diagnostics)
             if args.doctor_json:
-                print(json.dumps(plan.to_dict(), sort_keys=True))
+                payload = plan.to_dict()
+                payload["scheduling_capabilities"] = capabilities
+                print(json.dumps(payload, sort_keys=True))
             else:
                 print(format_doctor_report(plan.diagnostics))
+                print(format_scheduler_capabilities(capabilities))
                 print("Planned SM allocation:")
                 for lane in plan.lanes:
                     print(
@@ -528,10 +549,14 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             return 0
 
         diagnostics = inspect_green_device(args.device)
+        capabilities = inspect_scheduler_capabilities(diagnostics)
         if args.doctor_json:
-            print(json.dumps(diagnostics.to_dict(), sort_keys=True))
+            payload = diagnostics.to_dict()
+            payload["scheduling_capabilities"] = capabilities
+            print(json.dumps(payload, sort_keys=True))
         else:
             print(format_doctor_report(diagnostics))
+            print(format_scheduler_capabilities(capabilities))
         return 0
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         logger.error("CUDA Green Context diagnosis failed: %s", exc)
@@ -590,9 +615,12 @@ def cmd_monitor(args: argparse.Namespace) -> int:
             if (payload.get("metadata") or {}).get("orchestrator") == "ssh":
                 from .orchestration import refresh_distributed_snapshot
 
-                snapshot = refresh_distributed_snapshot(payload)
+                snapshot = refresh_distributed_snapshot(
+                    payload,
+                    profile=bool(args.profile),
+                )
             else:
-                snapshot = enrich_report(payload)
+                snapshot = enrich_report(payload, profile=bool(args.profile))
             if args.monitor_json:
                 print(json.dumps(snapshot, sort_keys=True), flush=True)
             else:
@@ -616,7 +644,10 @@ def cmd_list(args: argparse.Namespace) -> int:
 
         if args.limit <= 0:
             raise ValueError("--limit must be positive")
-        runs = list_registered_runs()[: args.limit]
+        runs = list_registered_runs(
+            refresh=bool(args.refresh),
+            prune=bool(args.prune),
+        )[: args.limit]
         if args.list_json:
             print(json.dumps(runs, sort_keys=True))
             return 0

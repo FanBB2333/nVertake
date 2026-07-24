@@ -3,9 +3,8 @@ Utility functions for nVertake.
 """
 
 import logging
-import os
 import subprocess
-from typing import Dict, Optional
+from typing import Dict
 
 import torch
 
@@ -55,7 +54,6 @@ def get_gpu_memory(device: int = 0) -> Dict[str, int]:
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
             total = torch.cuda.get_device_properties(device).total_memory // (1024 * 1024)
-            allocated = torch.cuda.memory_allocated(device) // (1024 * 1024)
             reserved = torch.cuda.memory_reserved(device) // (1024 * 1024)
             return {
                 'total': total,

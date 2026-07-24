@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+from contextlib import contextmanager
 import json
 import os
 import platform
@@ -13,9 +14,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, Mapping, Optional, Sequence, Tuple
 
-from .diagnostics import inspect_green_device
+from .diagnostics import inspect_green_device, inspect_scheduler_capabilities
 from .jobs import (
     CalibrationSpec,
     JobConfig,
@@ -24,7 +25,13 @@ from .jobs import (
     launch_jobs,
     plan_job_config,
 )
-from .runtime import TERMINAL_RUN_STATES, enrich_report, load_report, utc_now
+from .runtime import (
+    TERMINAL_RUN_STATES,
+    enrich_report,
+    load_report,
+    reconcile_report,
+    utc_now,
+)
 
 
 def _git_metadata(repo: Path) -> Dict[str, Any]:
@@ -87,6 +94,9 @@ def _gpu_inventory() -> Tuple[Dict[str, Any], ...]:
             "uuid": fields[4],
         }
         device.update(diagnostics.to_dict())
+        device["scheduling_capabilities"] = inspect_scheduler_capabilities(
+            diagnostics
+        )
         devices.append(device)
     if not devices:
         raise RuntimeError("nvidia-smi did not report any NVIDIA GPUs")
@@ -134,6 +144,9 @@ def _calibration(payload: Mapping[str, Any]) -> CalibrationSpec:
         duration=float(payload.get("duration", 5.0)),
         tolerance=float(payload.get("tolerance", 0.05)),
         damping=float(payload.get("damping", 0.5)),
+        warmup=float(payload.get("warmup", 0.5)),
+        minimum_samples=int(payload.get("minimum_samples", 3)),
+        sample_window=int(payload.get("sample_window", 20)),
     )
 
 
@@ -172,6 +185,11 @@ def _materialize_config(payload: Mapping[str, Any]) -> JobConfig:
                 cwd=cwd,
                 log=Path(str(raw_log)).expanduser() if raw_log is not None else None,
                 host=host_name,
+                work_queue_connections=(
+                    int(raw_job["work_queue_connections"])
+                    if raw_job.get("work_queue_connections") is not None
+                    else None
+                ),
             )
         )
     _validate_memory_groups(jobs)
@@ -185,6 +203,8 @@ def _materialize_config(payload: Mapping[str, Any]) -> JobConfig:
         calibration=_calibration(dict(payload.get("calibration", {}))),
         hosts={},
         git_check=True,
+        lease_timeout=float(payload.get("lease_timeout", 0.0)),
+        backend=str(payload.get("backend", "green")),
     )
 
 
@@ -226,7 +246,100 @@ def _report_path(payload: Mapping[str, Any]) -> Path:
 
 def _snapshot(payload: Mapping[str, Any]) -> Dict[str, Any]:
     report_path = _report_path(payload)
-    return enrich_report(load_report(report_path))
+    return enrich_report(
+        load_report(report_path),
+        profile=bool(payload.get("profile", False)),
+    )
+
+
+def _launch_result_from_snapshot(snapshot: Mapping[str, Any]) -> Dict[str, Any]:
+    status = str(snapshot.get("status", "failed"))
+    exit_code = 0 if status == "completed" else 130 if status == "cancelled" else 1
+    return {
+        "exit_code": exit_code,
+        "run_id": snapshot.get("run_id"),
+        "report_path": snapshot.get("report_path"),
+        "snapshot": dict(snapshot),
+        "reattached": True,
+    }
+
+
+def _existing_launch(payload: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """Reattach a repeated launch request to its existing host-local run."""
+
+    report_path = _report_path(payload)
+    if not report_path.is_file():
+        return None
+    snapshot = load_report(report_path)
+    if snapshot.get("run_id") != payload.get("run_id"):
+        raise RuntimeError("Existing remote report has a different run id")
+
+    while snapshot.get("status") not in TERMINAL_RUN_STATES:
+        metadata = dict(snapshot.get("metadata") or {})
+        launcher_pid = metadata.get("launcher_pid")
+        expected_ticks = metadata.get("launcher_start_ticks")
+        if (
+            not isinstance(launcher_pid, int)
+            or launcher_pid <= 0
+            or expected_ticks is None
+            or _process_start_ticks(launcher_pid) != str(expected_ticks)
+        ):
+            snapshot = reconcile_report(report_path)
+            break
+        time.sleep(0.25)
+        snapshot = load_report(report_path)
+    return _launch_result_from_snapshot(enrich_report(snapshot))
+
+
+@contextmanager
+def _launch_claim(payload: Mapping[str, Any]) -> Iterator[bool]:
+    """Serialize duplicate SSH launch requests before the report exists."""
+
+    try:
+        import fcntl
+    except ImportError as exc:
+        raise RuntimeError("Remote launch claims require POSIX file locking") from exc
+    report_path = _report_path(payload)
+    claim_path = report_path.with_name(f".{report_path.name}.launch.lock")
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    stream = claim_path.open("a+", encoding="utf-8")
+    acquired = False
+    try:
+        try:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            acquired = True
+        except BlockingIOError:
+            acquired = False
+        yield acquired
+    finally:
+        if acquired:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        stream.close()
+
+
+def _launch_fresh(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    config = _materialize_config(payload)
+    repo = Path(str(payload["repo"])).expanduser().resolve()
+    git = _assert_expected_git(payload, repo)
+    result = launch_jobs(
+        config,
+        quiet=True,
+        run_id=str(payload["run_id"]),
+        metadata={
+            "host": str(payload["host_name"]),
+            "launcher_start_ticks": _process_start_ticks(os.getpid()),
+            "git": git,
+            "config_sha256": payload.get("config_sha256"),
+            "source_git_commit": payload.get("expected_git_commit"),
+        },
+    )
+    return {
+        "exit_code": result.exit_code,
+        "run_id": result.run_id,
+        "report_path": str(result.report_path),
+        "snapshot": enrich_report(load_report(result.report_path)),
+        "reattached": False,
+    }
 
 
 def _signal_if_alive(pid: Any, requested_signal: int) -> bool:
@@ -316,27 +429,17 @@ def handle(action: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         config = _materialize_config(payload)
         return plan_job_config(config)
     if action == "launch":
-        config = _materialize_config(payload)
-        repo = Path(str(payload["repo"])).expanduser().resolve()
-        git = _assert_expected_git(payload, repo)
-        result = launch_jobs(
-            config,
-            quiet=True,
-            run_id=str(payload["run_id"]),
-            metadata={
-                "host": str(payload["host_name"]),
-                "launcher_start_ticks": _process_start_ticks(os.getpid()),
-                "git": git,
-                "config_sha256": payload.get("config_sha256"),
-                "source_git_commit": payload.get("expected_git_commit"),
-            },
-        )
-        return {
-            "exit_code": result.exit_code,
-            "run_id": result.run_id,
-            "report_path": str(result.report_path),
-            "snapshot": enrich_report(load_report(result.report_path)),
-        }
+        while True:
+            existing = _existing_launch(payload)
+            if existing is not None:
+                return existing
+            with _launch_claim(payload) as acquired:
+                if acquired:
+                    existing = _existing_launch(payload)
+                    if existing is not None:
+                        return existing
+                    return _launch_fresh(payload)
+            time.sleep(0.1)
     if action == "snapshot":
         return _snapshot(payload)
     if action == "stop":

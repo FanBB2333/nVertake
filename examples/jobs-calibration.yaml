@@ -1,9 +1,12 @@
 version: 1
 logs_dir: ./runs
+lease_timeout: 10
+backend: green
 
 defaults:
   cwd: .
   device: 0
+  work_queue_connections: 4
   env:
     PYTHONUNBUFFERED: "1"
 
@@ -13,6 +16,9 @@ calibration:
   rounds: 2
   tolerance: 0.01
   damping: 0.7
+  warmup: 0.5
+  minimum_samples: 3
+  sample_window: 10
 
 jobs:
   - name: calibration-small

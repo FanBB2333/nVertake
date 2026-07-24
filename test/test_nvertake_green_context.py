@@ -27,6 +27,7 @@ from nvertake.green_process import (
     GreenProcessLaunchError,
     _child_environment,
     _execute_python_script,
+    _install_parent_death_signal,
     _validate_ready_metadata,
     run_green_process_scripts,
 )
@@ -248,6 +249,34 @@ class TestGreenProcessContext(unittest.TestCase):
 
 
 class TestGreenProcessLauncherHelpers(unittest.TestCase):
+    def test_linux_worker_installs_parent_death_signal(self):
+        libc = MagicMock()
+        libc.prctl.return_value = 0
+        with patch(
+            "nvertake.green_process.sys.platform", "linux"
+        ), patch(
+            "ctypes.CDLL", return_value=libc
+        ), patch(
+            "nvertake.green_process.os.getppid", return_value=123
+        ):
+            _install_parent_death_signal(123)
+        libc.prctl.assert_called_once()
+
+    def test_parent_death_setup_rejects_an_already_changed_parent(self):
+        libc = MagicMock()
+        libc.prctl.return_value = 0
+        with patch(
+            "nvertake.green_process.sys.platform", "linux"
+        ), patch(
+            "ctypes.CDLL", return_value=libc
+        ), patch(
+            "nvertake.green_process.os.getppid", return_value=456
+        ):
+            with self.assertRaisesRegex(
+                GreenProcessLaunchError, "launcher exited"
+            ):
+                _install_parent_death_signal(123)
+
     def test_child_environment_selects_device_and_clears_inherited_limits(self):
         with patch.dict(
             os.environ,

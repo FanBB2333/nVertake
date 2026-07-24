@@ -28,6 +28,7 @@ from .runtime import (
     RunReport,
     TERMINAL_RUN_STATES,
     enrich_report,
+    process_create_time,
     utc_now,
 )
 
@@ -100,23 +101,55 @@ def call_host(
     payload: Mapping[str, Any],
     *,
     timeout: Optional[float] = 30.0,
+    attempts: int = 3,
+    retry_delay: float = 0.25,
 ) -> Dict[str, Any]:
+    if attempts <= 0:
+        raise ValueError("Host call attempts must be positive")
+    if retry_delay < 0:
+        raise ValueError("Host call retry delay must be non-negative")
     command, cwd = _host_command(host, action)
-    try:
-        result = subprocess.run(
-            command,
-            cwd=str(cwd) if cwd is not None else None,
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+    last_transport_error: Optional[BaseException] = None
+    result: Optional[subprocess.CompletedProcess[str]] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            result = subprocess.run(
+                command,
+                cwd=str(cwd) if cwd is not None else None,
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except (FileNotFoundError, subprocess.SubprocessError, OSError) as exc:
+            last_transport_error = exc
+            if attempt >= attempts:
+                raise RuntimeError(
+                    f"Host {host.name!r} {action} failed after "
+                    f"{attempts} attempt(s): {exc}"
+                ) from exc
+        else:
+            if result.returncode != 255 or host.local or attempt >= attempts:
+                break
+            last_transport_error = RuntimeError(
+                result.stderr.strip() or "SSH transport exited with status 255"
+            )
+        time.sleep(retry_delay * (2 ** (attempt - 1)))
+
+    if result is None:
+        raise RuntimeError(
+            f"Host {host.name!r} {action} failed: {last_transport_error}"
         )
-    except (FileNotFoundError, subprocess.SubprocessError, OSError) as exc:
-        raise RuntimeError(f"Host {host.name!r} {action} failed: {exc}") from exc
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "no error output"
         raise RuntimeError(
-            f"Host {host.name!r} {action} exited with {result.returncode}: {detail}"
+            f"Host {host.name!r} {action} exited with {result.returncode}"
+            + (
+                f" after {attempts} transport attempts"
+                if result.returncode == 255 and not host.local
+                else ""
+            )
+            + f": {detail}"
         )
     try:
         payload_result = json.loads(result.stdout)
@@ -193,6 +226,7 @@ def _serialize_job(job: JobSpec) -> Dict[str, Any]:
         "env": dict(job.env),
         "cwd": str(job.cwd),
         "log": str(job.log) if job.log is not None else None,
+        "work_queue_connections": job.work_queue_connections,
     }
 
 
@@ -226,6 +260,8 @@ def _host_payload(
         "report_path": _report_path(probe, run_id, host.name),
         "startup_timeout": config.startup_timeout,
         "calibration": asdict(config.calibration),
+        "lease_timeout": config.lease_timeout,
+        "backend": config.backend,
         "jobs": [_serialize_job(job) for job in jobs],
         "expected_git_commit": source["git"].get("commit"),
         "require_clean": bool(config.git_check),
@@ -345,13 +381,17 @@ def _host_spec_from_metadata(raw: Mapping[str, Any]) -> HostSpec:
     )
 
 
-def refresh_distributed_snapshot(payload: Mapping[str, Any]) -> Dict[str, Any]:
+def refresh_distributed_snapshot(
+    payload: Mapping[str, Any],
+    *,
+    profile: bool = False,
+) -> Dict[str, Any]:
     """Fetch remote host reports for monitor/list without mutating the report."""
 
     snapshot = json.loads(json.dumps(payload))
     metadata = dict(snapshot.get("metadata") or {})
     if metadata.get("orchestrator") != "ssh":
-        return enrich_report(snapshot)
+        return enrich_report(snapshot, profile=profile)
     hosts = dict(metadata.get("hosts") or {})
     if not hosts:
         return snapshot
@@ -366,6 +406,7 @@ def refresh_distributed_snapshot(payload: Mapping[str, Any]) -> Dict[str, Any]:
                 "repo": raw["probe"]["repo_path"],
                 "report_path": raw["report_path"],
                 "run_id": snapshot.get("run_id"),
+                "profile": profile,
             }
             futures[name] = executor.submit(
                 call_host, host, "snapshot", request, timeout=15.0
@@ -386,6 +427,8 @@ def refresh_distributed_snapshot(payload: Mapping[str, Any]) -> Dict[str, Any]:
         if host_snapshot is not None:
             host_record["status"] = host_snapshot.get("status", "unknown")
             host_record["error"] = host_snapshot.get("error")
+            if host_snapshot.get("telemetry") is not None:
+                host_record["telemetry"] = host_snapshot.get("telemetry")
             for child in host_snapshot.get("jobs", []):
                 target = indexed_jobs.get(str(child.get("name")))
                 if target is not None:
@@ -453,6 +496,7 @@ def launch_distributed_jobs(
         metadata={
             "orchestrator": "ssh",
             "launcher_pid": os.getpid(),
+            "launcher_create_time": process_create_time(os.getpid()),
             "git": source["git"],
             "config_sha256": source["config_sha256"],
             "coordinator": source["coordinator"],
@@ -472,6 +516,8 @@ def launch_distributed_jobs(
             "target_throughput_share": job.target_share,
             "effective_sm_share": job.sm_share,
             "memory_share": job.memory_share,
+            "work_queue_connections": job.work_queue_connections,
+            "backend": config.backend,
         }
         for job in jobs
     )
@@ -591,9 +637,11 @@ def launch_distributed_jobs(
 
         if failures:
             detail = "; ".join(f"{name}: {error}" for name, error in failures.items())
+            report.mark_unfinished_failed(detail)
             report.set_status("failed", error=detail)
             return JobLaunchResult(1, run_id, report_path)
         if cancellations:
+            report.mark_jobs_cancelled()
             report.set_status(
                 "cancelled",
                 error="Stopped on host(s): " + ", ".join(sorted(cancellations)),
@@ -616,9 +664,11 @@ def launch_distributed_jobs(
                 )
             except RuntimeError:
                 pass
+        report.mark_jobs_cancelled()
         report.set_status("cancelled", error="Interrupted by user")
         raise
     except BaseException as exc:
+        report.mark_unfinished_failed(str(exc))
         report.set_status("failed", error=str(exc))
         raise
 

@@ -81,24 +81,36 @@ def _worker_command(
 def _child_environment(
     device: int,
     custom_environment: Optional[Mapping[str, str]] = None,
+    *,
+    preserve_cuda_environment: bool = False,
 ) -> Dict[str, str]:
     env = os.environ.copy()
     if custom_environment:
         env.update(custom_environment)
-    env["CUDA_VISIBLE_DEVICES"] = str(device)
-    env["NVERTAKE_GREEN_PROCESS"] = "1"
     env["NVERTAKE_GREEN_PHYSICAL_DEVICE"] = str(device)
-    for name in (
-        "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE",
-        "CUDA_MPS_CLIENT_PRIORITY",
-        "CUDA_MPS_PIPE_DIRECTORY",
-        "CUDA_MPS_LOG_DIRECTORY",
-        "NVERTAKE_AUTO_PRIORITY",
-        "NVERTAKE_AUTO_PRIORITY_DEVICE",
-        "NVERTAKE_AUTO_PRIORITY_PHYSICAL_DEVICE",
-        "NVERTAKE_AUTO_PRIORITY_QUIET",
-    ):
-        env.pop(name, None)
+    if preserve_cuda_environment:
+        env.pop("NVERTAKE_GREEN_PROCESS", None)
+        for name in (
+            "CUDA_VISIBLE_DEVICES",
+            "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE",
+            "CUDA_MPS_CLIENT_PRIORITY",
+        ):
+            env.pop(name, None)
+    else:
+        env["CUDA_VISIBLE_DEVICES"] = str(device)
+        env["NVERTAKE_GREEN_PROCESS"] = "1"
+        for name in (
+            "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE",
+            "CUDA_MPS_CLIENT_PRIORITY",
+            "CUDA_MPS_PIPE_DIRECTORY",
+            "CUDA_MPS_LOG_DIRECTORY",
+            "CUDA_MPS_SM_PARTITION",
+            "NVERTAKE_AUTO_PRIORITY",
+            "NVERTAKE_AUTO_PRIORITY_DEVICE",
+            "NVERTAKE_AUTO_PRIORITY_PHYSICAL_DEVICE",
+            "NVERTAKE_AUTO_PRIORITY_QUIET",
+        ):
+            env.pop(name, None)
     package_root = str(Path(__file__).resolve().parent.parent)
     existing_python_path = env.get("PYTHONPATH")
     env["PYTHONPATH"] = (
@@ -172,7 +184,10 @@ def _wait_for_workers_ready(
 
 
 def _validate_ready_metadata(
-    metadata: Sequence[Dict[str, Any]], expected_count: int
+    metadata: Sequence[Dict[str, Any]],
+    expected_count: int,
+    *,
+    plain: bool = False,
 ) -> Tuple[int, ...]:
     if len(metadata) != expected_count:
         raise GreenProcessLaunchError("Incomplete Green process readiness metadata")
@@ -185,12 +200,22 @@ def _validate_ready_metadata(
         if process_id <= 0 or process_id in process_ids:
             raise GreenProcessLaunchError("Green process PIDs are invalid or duplicated")
         process_ids.add(process_id)
+        if plain:
+            sm_count = int(item.get("sm_count", -1))
+            if sm_count <= 0:
+                raise GreenProcessLaunchError(
+                    "Plain CUDA worker reported an invalid SM count"
+                )
+            partition_maps.append((sm_count,))
+            continue
         partitions = tuple(int(value) for value in item.get("partition_sm_counts", []))
         if len(partitions) != expected_count or any(value <= 0 for value in partitions):
             raise GreenProcessLaunchError("Green process partition metadata is incomplete")
         if int(item.get("sm_count", -1)) != partitions[expected_lane]:
             raise GreenProcessLaunchError("Green process lane SM metadata is inconsistent")
         partition_maps.append(partitions)
+    if plain:
+        return tuple(partitions[0] for partitions in partition_maps)
     if any(partitions != partition_maps[0] for partitions in partition_maps[1:]):
         raise GreenProcessLaunchError(
             "CUDA workers derived different SM partition maps"
@@ -219,6 +244,8 @@ def launch_green_process_scripts(
     ] = None,
     on_exit: Optional[Callable[[int, Optional[int], str], None]] = None,
     cancel_event: Optional[Any] = None,
+    plain: bool = False,
+    preserve_cuda_environment: bool = False,
 ) -> GreenProcessRunResult:
     """Run one physical GPU group and return its detailed process outcome."""
 
@@ -361,7 +388,11 @@ def launch_green_process_scripts(
                     lane_job_names,
                 )
             ):
-                env = _child_environment(device, custom_environment)
+                env = _child_environment(
+                    device,
+                    custom_environment,
+                    preserve_cuda_environment=preserve_cuda_environment,
+                )
                 env["NVERTAKE_JOB_NAME"] = job_name
                 if memory_share is not None:
                     env["NVERTAKE_MEMORY_SHARE"] = str(float(memory_share))
@@ -386,7 +417,7 @@ def launch_green_process_scripts(
                         ),
                         job_name=job_name,
                         metrics_path=metrics_path,
-                        plain=(lane_count == 1),
+                        plain=(plain or lane_count == 1),
                     ),
                     env=env,
                     cwd=(str(working_directory) if working_directory else None),
@@ -403,7 +434,9 @@ def launch_green_process_scripts(
                 cancel_event=cancel_event,
             )
             partition_sm_counts = _validate_ready_metadata(
-                metadata, len(resolved_scripts)
+                metadata,
+                len(resolved_scripts),
+                plain=(plain or lane_count == 1),
             )
             if on_ready is not None:
                 on_ready(metadata, partition_sm_counts)
@@ -544,6 +577,23 @@ def _parent_is_alive(parent_pid: int) -> bool:
         return True
 
 
+def _install_parent_death_signal(parent_pid: int) -> None:
+    """Ask Linux to terminate a worker if its launcher disappears."""
+
+    if not sys.platform.startswith("linux"):
+        return
+    import ctypes
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(1, signal.SIGTERM, 0, 0, 0) != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number))
+    if os.getppid() != parent_pid:
+        raise GreenProcessLaunchError(
+            "Green process launcher exited before parent-death monitoring was installed"
+        )
+
+
 def _wait_for_start(path: Path, *, timeout: float, parent_pid: int) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -620,6 +670,7 @@ def _apply_torch_memory_share(memory_share: Optional[float]) -> None:
 def _plain_worker_metadata(
     *,
     lane_index: int,
+    shares: Sequence[float],
     memory_share: Optional[float],
     job_name: Optional[str],
 ) -> Dict[str, Any]:
@@ -631,7 +682,7 @@ def _plain_worker_metadata(
     return {
         "lane_index": lane_index,
         "pid": os.getpid(),
-        "requested_share": 100.0,
+        "requested_share": float(shares[lane_index]),
         "sm_count": sm_count,
         "partition_sm_counts": [sm_count],
         "memory_share": memory_share,
@@ -641,6 +692,7 @@ def _plain_worker_metadata(
 
 
 def _worker_main(args: argparse.Namespace) -> int:
+    _install_parent_death_signal(args.parent_pid)
     shares = json.loads(args.shares_json)
     script_args = json.loads(args.script_args_json)
     if not isinstance(shares, list):
@@ -661,6 +713,7 @@ def _worker_main(args: argparse.Namespace) -> int:
     if args.plain:
         metadata = _plain_worker_metadata(
             lane_index=args.lane_index,
+            shares=shares,
             memory_share=args.memory_share,
             job_name=args.job_name,
         )

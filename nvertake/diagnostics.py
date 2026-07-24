@@ -180,3 +180,56 @@ def format_doctor_report(diagnostics: GreenDeviceDiagnostics) -> str:
             f"({diagnostics.max_processes_basis})",
         )
     )
+
+
+def inspect_scheduler_capabilities(
+    diagnostics: GreenDeviceDiagnostics,
+) -> Dict[str, Any]:
+    """Inspect optional scheduling and telemetry backends for one device."""
+
+    from .mps import inspect_static_mps_capability
+    from .telemetry import inspect_telemetry_capabilities
+
+    return {
+        "mps_static": inspect_static_mps_capability(
+            diagnostics.device,
+            compute_capability_major=diagnostics.compute_capability_major,
+        ).to_dict(),
+        "work_queue_connections": {
+            "available": True,
+            "mode": "CUDA_DEVICE_MAX_CONNECTIONS hint",
+            "minimum": 1,
+            "maximum": 32,
+            "hard_partition": False,
+            "detail": (
+                "Controls per-process CUDA connection count; it does not reserve "
+                "independent hardware work queues"
+            ),
+        },
+        "telemetry": inspect_telemetry_capabilities(diagnostics.device),
+    }
+
+
+def format_scheduler_capabilities(capabilities: Dict[str, Any]) -> str:
+    """Format optional backend capability results for ``doctor``."""
+
+    static = dict(capabilities.get("mps_static") or {})
+    telemetry = dict(capabilities.get("telemetry") or {})
+    pmon = dict(telemetry.get("process_utilization") or {})
+    dcgm = dict(telemetry.get("dcgm_profiling") or {})
+    return "\n".join(
+        (
+            "Optional capabilities:",
+            "  Static MPS partitions: "
+            + ("yes" if static.get("available") else "no")
+            + f" ({static.get('detail') or 'unknown'})",
+            "  Per-process SM telemetry: "
+            + ("yes" if pmon.get("available") else "no")
+            + f" ({pmon.get('source') or 'nvidia-smi pmon'})",
+            "  DCGM profiling fields: "
+            + ("yes" if dcgm.get("available") else "no")
+            + f" ({dcgm.get('detail') or 'unknown'})",
+            "  Work-queue setting: CUDA_DEVICE_MAX_CONNECTIONS hint (1-32; "
+            "not a hard queue partition)",
+        )
+    )

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Tuple
@@ -48,6 +49,113 @@ class MPSStatus:
     server_pids: Tuple[int, ...] = ()
     client_pids: Tuple[int, ...] = ()
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class StaticMPSCapability:
+    """Whether this host can launch CUDA 13.1 static MPS partitions."""
+
+    available: bool
+    device: int
+    control_binary: Optional[str]
+    compute_capability_major: Optional[int]
+    chunk_sm_count: Optional[int]
+    detail: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "available": self.available,
+            "device": self.device,
+            "control_binary": self.control_binary,
+            "compute_capability_major": self.compute_capability_major,
+            "chunk_sm_count": self.chunk_sm_count,
+            "detail": self.detail,
+        }
+
+
+def inspect_static_mps_capability(
+    device: int = 0,
+    *,
+    compute_capability_major: Optional[int] = None,
+    control_binary: str = MPS_CONTROL_BINARY,
+) -> StaticMPSCapability:
+    """Check platform, architecture, and control-tool support for static MPS."""
+
+    controller = MPSController(device=device, control_binary=control_binary)
+    platform_error = controller._platform_error()
+    binary = controller._resolved_control_binary()
+    if platform_error:
+        return StaticMPSCapability(
+            False,
+            int(device),
+            binary,
+            compute_capability_major,
+            None,
+            platform_error,
+        )
+    if binary is None:
+        return StaticMPSCapability(
+            False,
+            int(device),
+            None,
+            compute_capability_major,
+            None,
+            f"{control_binary!r} was not found",
+        )
+    if compute_capability_major is not None and compute_capability_major < 8:
+        return StaticMPSCapability(
+            False,
+            int(device),
+            binary,
+            compute_capability_major,
+            None,
+            "Static MPS requires an Ampere-or-newer GPU",
+        )
+    try:
+        result = subprocess.run(
+            [binary, "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StaticMPSCapability(
+            False,
+            int(device),
+            binary,
+            compute_capability_major,
+            None,
+            f"Cannot inspect MPS control options: {exc}",
+        )
+    help_text = f"{result.stdout}\n{result.stderr}"
+    supports_static = (
+        "--static-partitioning" in help_text
+        or bool(re.search(r"(^|[\s,])-S([\s,]|$)", help_text))
+    )
+    if not supports_static:
+        return StaticMPSCapability(
+            False,
+            int(device),
+            binary,
+            compute_capability_major,
+            None,
+            "Installed MPS control tool does not expose static partitioning",
+        )
+    chunk_sm_count = (
+        8
+        if compute_capability_major is not None
+        and compute_capability_major >= 9
+        else 4
+    )
+    return StaticMPSCapability(
+        True,
+        int(device),
+        binary,
+        compute_capability_major,
+        chunk_sm_count,
+        "Static SM partitioning is available",
+    )
 
 
 def validate_active_thread_percentage(value: int) -> int:
@@ -93,6 +201,7 @@ def configure_mps_client_env(
     env.pop("CUDA_VISIBLE_DEVICES", None)
     env["CUDA_MPS_PIPE_DIRECTORY"] = str(paths.pipe_directory)
     env["CUDA_MPS_LOG_DIRECTORY"] = str(paths.log_directory)
+    env.pop("CUDA_MPS_SM_PARTITION", None)
 
     if active_thread_percentage is not None:
         percentage = validate_active_thread_percentage(active_thread_percentage)
@@ -107,6 +216,61 @@ def configure_mps_client_env(
         env.pop("CUDA_MPS_CLIENT_PRIORITY", None)
 
     return env
+
+
+def configure_static_mps_client_env(
+    env: MutableMapping[str, str],
+    *,
+    paths: MPSPaths,
+    partition_id: str,
+) -> MutableMapping[str, str]:
+    """Connect a client to one static MPS SM partition."""
+
+    configure_mps_client_env(env, paths=paths)
+    if not isinstance(partition_id, str) or "/" not in partition_id:
+        raise ValueError("Static MPS partition id is invalid")
+    env["CUDA_MPS_SM_PARTITION"] = partition_id
+    env["NVERTAKE_PROCESS_BACKEND"] = "mps-static"
+    return env
+
+
+def plan_static_mps_chunks(
+    shares: Iterable[float],
+    *,
+    total_sm_count: int,
+    chunk_sm_count: int,
+) -> Tuple[int, ...]:
+    """Convert relative shares into positive static-MPS chunk counts."""
+
+    weights = tuple(float(value) for value in shares)
+    if not weights or any(not math.isfinite(value) or value <= 0 for value in weights):
+        raise ValueError("Static MPS shares must be positive finite numbers")
+    if total_sm_count <= 0 or chunk_sm_count <= 0:
+        raise ValueError("Static MPS SM and chunk counts must be positive")
+    available = total_sm_count // chunk_sm_count
+    if len(weights) > available:
+        raise ValueError(
+            f"Static MPS has {available} chunks but {len(weights)} jobs were requested"
+        )
+
+    total_weight = sum(weights)
+    desired = [value / total_weight * available for value in weights]
+    allocation = [max(1, int(math.floor(value))) for value in desired]
+    while sum(allocation) > available:
+        candidates = [
+            index for index, value in enumerate(allocation) if value > 1
+        ]
+        if not candidates:
+            raise ValueError("Static MPS cannot allocate one chunk per job")
+        index = max(candidates, key=lambda item: allocation[item] - desired[item])
+        allocation[index] -= 1
+    while sum(allocation) < available:
+        index = max(
+            range(len(allocation)),
+            key=lambda item: desired[item] - allocation[item],
+        )
+        allocation[index] += 1
+    return tuple(allocation)
 
 
 def _numeric_lines(text: str) -> Tuple[int, ...]:
@@ -170,6 +334,7 @@ class MPSController:
     def _daemon_env(self, gpu_uuid: str) -> Dict[str, str]:
         env = self._control_env()
         env["CUDA_VISIBLE_DEVICES"] = gpu_uuid
+        env.pop("CUDA_MPS_SM_PARTITION", None)
         # Client settings inherited by the daemon become upper bounds/defaults.
         # Keep the daemon unrestricted and apply limits per client instead.
         env["CUDA_MPS_ACTIVE_THREAD_PERCENTAGE"] = "100"
@@ -375,6 +540,106 @@ class MPSController:
             time.sleep(0.1)
         raise MPSControlError(
             "NVIDIA MPS control daemon did not become ready" + self._log_diagnostics()
+        )
+
+    def start_static(self, *, timeout: float = 8.0) -> bool:
+        """Start an MPS control daemon in CUDA 13.1 static-partitioning mode."""
+
+        binary = self._ensure_supported()
+        capability = inspect_static_mps_capability(
+            self.device,
+            control_binary=self.control_binary,
+        )
+        if not capability.available:
+            raise MPSControlError(capability.detail)
+        self._ensure_directories()
+        if self.is_running():
+            completed = self._run_control("lspart")
+            combined = f"{completed.stdout}\n{completed.stderr}".lower()
+            if not self._control_succeeded(completed) or any(
+                marker in combined
+                for marker in ("invalid command", "unknown command", "not supported")
+            ):
+                raise MPSControlError(
+                    "An existing MPS daemon is not in static-partitioning mode"
+                )
+            return False
+
+        gpu_uuid = self._gpu_uuid()
+        try:
+            completed = subprocess.run(
+                [binary, "-d", "-S"],
+                capture_output=True,
+                text=True,
+                env=self._daemon_env(gpu_uuid),
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise MPSControlError(f"Failed to start static NVIDIA MPS: {exc}") from exc
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout).strip()
+            raise MPSControlError(
+                f"Failed to start static NVIDIA MPS: {detail or 'unknown error'}"
+            )
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.is_running():
+                probe = self._run_control("lspart")
+                if self._control_succeeded(probe):
+                    return True
+            time.sleep(0.1)
+        raise MPSControlError(
+            "Static NVIDIA MPS daemon did not become ready" + self._log_diagnostics()
+        )
+
+    def create_static_partition(
+        self,
+        chunks: int,
+        *,
+        gpu_uuid: Optional[str] = None,
+    ) -> str:
+        """Create one static partition and return its CUDA partition id."""
+
+        chunk_count = int(chunks)
+        if chunk_count <= 0:
+            raise ValueError("Static MPS partition chunks must be positive")
+        device_uuid = gpu_uuid or self._gpu_uuid()
+        completed = self._run_control(
+            f"sm_partition add {device_uuid} {chunk_count}"
+        )
+        combined = f"{completed.stdout}\n{completed.stderr}"
+        match = re.search(r"(GPU-[A-Za-z0-9-]+/[A-Za-z0-9]+)", combined)
+        if not self._control_succeeded(completed) or match is None:
+            raise MPSControlError(
+                "Failed to create static MPS partition: "
+                + (combined.strip() or "no partition id returned")
+            )
+        return match.group(1)
+
+    def remove_static_partition(self, partition_id: str) -> None:
+        """Remove an unused static partition."""
+
+        completed = self._run_control(f"sm_partition rm {partition_id}")
+        combined = f"{completed.stdout}\n{completed.stderr}"
+        if not self._control_succeeded(completed) or any(
+            marker in combined.lower() for marker in ("failed", "in use", "error")
+        ):
+            raise MPSControlError(
+                "Failed to remove static MPS partition: "
+                + (combined.strip() or "unknown error")
+            )
+
+    def static_client_environment(
+        self,
+        env: MutableMapping[str, str],
+        *,
+        partition_id: str,
+    ) -> MutableMapping[str, str]:
+        return configure_static_mps_client_env(
+            env,
+            paths=self.paths,
+            partition_id=partition_id,
         )
 
     def ensure_started(self) -> bool:

@@ -15,7 +15,9 @@ Scope:
 - Green Context partition calculation, multi-process launch, and concurrent task wiring
 - read-only driver diagnostics and dry-run allocation plans
 - YAML validation, multi-GPU grouping, logs, runtime reports, and monitor output
-- PyTorch memory-fraction wiring and throughput calibration math
+- GPU leases, stale-run reconciliation, SSH retry/reattach, and cancellation state
+- PyTorch memory-fraction wiring and multi-sample throughput calibration
+- static-MPS capability/chunk planning and nvidia-smi/DCGM telemetry parsing
 - scheduler wiring
 - PyTorch auto-priority env injection
 - memory target calculations
@@ -196,8 +198,11 @@ nvertake monitor
 ```
 
 While the launch is active, `nvertake monitor --watch` displays PID, assigned
-SM count, framebuffer memory, reported throughput, and state. The final report
-is stored below `examples/runs/<run-id>/report.json`.
+SM count, framebuffer memory, reported throughput, and state.
+`nvertake monitor --profile --json` adds process SM/memory utilization and
+device/DCGM telemetry. After an injected launcher failure,
+`nvertake list --refresh` reconciles the stale report. The final report is
+stored below `examples/runs/<run-id>/report.json`.
 
 ## Recommended Workflow
 

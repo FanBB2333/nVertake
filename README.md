@@ -13,6 +13,9 @@ resource-contention experiments.
 - **Dry-Run Diagnostics**: Check driver support and preview exact SM counts without creating contexts or processes
 - **Per-Process PyTorch Memory Caps**: Pair SM shares with caching-allocator memory fractions
 - **Live Reports and Calibration**: Monitor local PIDs and adjust SM weights from workload-reported throughput
+- **GPU Performance Telemetry**: Sample per-process SM/memory utilization, device clocks/power, and optional DCGM profiling fields
+- **Reliable Run Lifecycle**: Serialize same-GPU launches, retry transient SSH failures, reattach repeated remote requests, and repair stale run records
+- **Optional Static MPS Backend**: Use CUDA 13.1 static SM partitions when the host explicitly reports support
 - **Driver-Level SM Partitioning**: Run two cooperating in-process tasks in separate CUDA Green Contexts, including on WSL
 - **Weighted GPU Sharing**: Give cooperating CUDA processes different execution-resource ceilings through NVIDIA MPS
 - **Memory Reservation**: Reserve GPU memory to prevent other processes from claiming it
@@ -38,9 +41,12 @@ nvertake --device 0 doctor --shares 20,30,50 --json
 ```
 
 `doctor` reports the CUDA driver capability, allocatable SM count, partition
-constraints, and the maximum number of SM resource groups. The maximum is a
+constraints, maximum number of SM resource groups, static-MPS availability,
+per-process telemetry availability, and DCGM profiling status. The maximum is a
 driver-reported partition limit, not a promise that memory and work-queue
-resources can sustain that many useful workloads.
+resources can sustain that many useful workloads. Static MPS and DCGM are
+capability-gated: an installed command alone is not reported as usable when the
+driver module or control utility lacks the required feature.
 
 Preview a `green-procs` split with the same driver path used by a real launch:
 
@@ -61,9 +67,12 @@ configuration. A shortened form is:
 ```yaml
 version: 1
 logs_dir: ./runs
+lease_timeout: 10
+backend: green
 defaults:
   cwd: .
   device: 0
+  work_queue_connections: 4
   env:
     PYTHONUNBUFFERED: "1"
 jobs:
@@ -94,14 +103,27 @@ report path. Inspect the latest local run, a particular run id, or a report file
 ```bash
 nvertake monitor
 nvertake monitor RUN_ID --watch
+nvertake monitor RUN_ID --profile --json
 nvertake monitor path/to/report.json --json
-nvertake list
+nvertake list --refresh
+nvertake list --refresh --prune
 nvertake logs RUN_ID --job foreground --lines 50
 nvertake stop RUN_ID
 ```
 
 The monitor reports the job name, physical GPU, PID, assigned SM count,
-framebuffer memory, latest workload throughput, and state. Add `device: 0` or
+framebuffer memory, latest workload throughput, and state. `--profile` also
+samples per-process SM/memory utilization with `nvidia-smi pmon`, device-wide
+utilization, clocks, power, and temperature. When DCGM profiling is loaded, the
+JSON includes SM Active, SM Occupancy, Tensor, DRAM, FP32, and FP16 activity;
+otherwise it includes the exact unavailable reason instead of inventing a
+value.
+
+`nvertake list --refresh` reconciles reports with live launcher identities and
+marks abandoned non-terminal runs as failed. `--prune` removes only registry
+entries whose report file is missing or invalid.
+
+Add `device: 0` or
 `device: 1` to each job to launch groups on both GPUs at the same time; see
 [`examples/jobs-multi-gpu.yaml`](examples/jobs-multi-gpu.yaml).
 Use `device: auto` to place jobs on the least-loaded compatible GPU. nVertake
@@ -118,6 +140,20 @@ job for a GPU; nVertake requires their sum to be at most `1.0`. This limits the
 PyTorch caching allocator. Direct CUDA allocations and allocations made by
 other libraries are outside this limit, and driver/context overhead still uses
 memory.
+
+`lease_timeout` controls how long a launch waits when another nVertake run owns
+the same physical GPU. The default is `0`, which fails immediately. The lease
+is an advisory cross-process lock held through calibration and the real run,
+and is released by the operating system if the launcher crashes. It prevents
+two nVertake YAML launches from accidentally creating competing partitions; it
+cannot block unrelated CUDA programs. On Linux, each managed worker also
+requests a parent-death signal before initializing CUDA, so a killed launcher
+does not intentionally leave its Green workers running without a lease.
+
+`work_queue_connections` sets `CUDA_DEVICE_MAX_CONNECTIONS` independently for
+each job (valid range `1`-`32`). This changes how many CUDA connections that
+process may use and can reduce queue/context overhead, but it is a driver hint,
+not a hard reservation of hardware work queues.
 
 ### Coordinate Several Machines
 
@@ -165,6 +201,11 @@ or untracked changes. This prevents one machine from silently running different
 scheduler or workload code. `git_check: false` disables this protection when
 deliberately testing uncommitted code.
 
+Transient SSH timeouts and exit status `255` are retried with exponential
+backoff. A repeated `launch` request with the same run id attaches to the
+existing host-local report and waits for that launcher, so a lost SSH response
+does not create a second copy of the workload.
+
 The aggregate report stores the config SHA-256, Git commit, coordinator Python
 and platform, and each host's Python, PyTorch, CUDA, driver, GPU, memory, and SM
 capabilities. It also records the host-local report and log locations.
@@ -196,12 +237,18 @@ calibration:
   rounds: 2
   tolerance: 0.05
   damping: 0.5
+  warmup: 0.5
+  minimum_samples: 3
+  sample_window: 20
 ```
 
 During each round nVertake sets `NVERTAKE_CALIBRATION=1` and
-`NVERTAKE_CALIBRATION_SECONDS`, collects the latest value from every job,
-compares normalized throughput with each job's `target_share` (or `sm_share`),
-and applies a damped correction before the real launch. Optional
+`NVERTAKE_CALIBRATION_SECONDS`, retains timestamped values from every job,
+discards the configured warmup interval, and uses the median of the latest
+sample window. The report records the sample count and median absolute
+deviation. It then compares normalized throughput with each job's
+`target_share` (or `sm_share`) and applies a damped correction before the real
+launch. Optional
 `calibration_args` are appended only during those rounds. Calibration fails
 clearly when a job does not report a positive value or when units differ on the
 same GPU. Use calibration mode only when the script treats the calibration
@@ -285,6 +332,31 @@ Important constraints:
 The corresponding Python API is `run_green_process_scripts(...)`.
 See NVIDIA's [Green Context programming guide](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/green-contexts.html)
 for the underlying CUDA mechanism and its architecture-specific constraints.
+
+### Optional Static MPS Backend
+
+CUDA 13.1 adds static MPS SM partitions on Ampere and newer native-Linux
+systems. Select it explicitly in a YAML file, or let `auto` select it only when
+the local control utility advertises the feature:
+
+```yaml
+backend: mps-static  # alternatives: green, auto
+lease_timeout: 10
+```
+
+nVertake starts a run-specific daemon with `-S`, converts the requested weights
+to architecture-sized chunks, creates one partition per job, assigns
+`CUDA_MPS_SM_PARTITION`, starts the clients together, then removes the
+partitions and daemon. The dry-run shows nominal chunk counts and any SMs that
+the MPS server will distribute when clients connect; the live report records
+the SM count actually visible to each client.
+
+This path is experimental and must pass `doctor` before launch. It cannot run
+on WSL, on pre-Ampere GPUs, or with an older MPS control utility. The current
+406 host has an older control utility without static partitioning, while gem12
+does not expose MPS inside WSL, so both hosts continue to use `backend: green`.
+Static MPS has unit coverage in this repository but still needs an eligible
+CUDA 13.1 native-Linux machine for hardware validation.
 
 ### Partition SMs Between Two In-Process Tasks
 
@@ -467,7 +539,8 @@ Commands:
   exec COMMAND [ARGS...] Run any command with elevated priority environment
   doctor                Inspect Green Context driver capabilities
   launch JOBS.yaml      Launch a YAML job file across one or more GPUs
-  monitor [RUN]         Inspect a live or completed JSON run report
+  monitor [RUN]         Inspect a report; --profile samples GPU utilization
+  list                  List runs; --refresh repairs and --prune cleans entries
   green-procs           Run Python files as weighted Green Context processes
   green-run             Run two callables in separate Green Context SM partitions
   info                  Show GPU information

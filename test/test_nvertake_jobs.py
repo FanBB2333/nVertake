@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,16 +21,25 @@ from nvertake.green_process import (
     _apply_torch_memory_share,
 )
 from nvertake.jobs import (
+    CalibrationSpec,
+    _calibrate,
     assign_auto_devices,
     adjust_shares_for_throughput,
     launch_jobs,
     load_job_config,
 )
-from nvertake.metrics import read_throughput_metric, report_throughput
+from nvertake.lease import GpuLease, GpuLeaseError
+from nvertake.metrics import (
+    read_throughput_metric,
+    read_throughput_samples,
+    report_throughput,
+)
+from nvertake.orchestration import call_host
 from nvertake.runtime import (
     RunReport,
     enrich_report,
     format_monitor_table,
+    list_registered_runs,
     read_report_logs,
     stop_local_report,
 )
@@ -145,8 +154,11 @@ class TestYamlConfig(unittest.TestCase):
             config_path.write_text(
                 """version: 1
 logs_dir: logs
+lease_timeout: 12
+backend: auto
 defaults:
   cwd: .
+  work_queue_connections: 3
   env:
     COMMON: "yes"
 jobs:
@@ -176,6 +188,9 @@ jobs:
         self.assertEqual(config.jobs[0].env["COMMON"], "yes")
         self.assertEqual(config.jobs[0].memory_share, 0.25)
         self.assertEqual(config.jobs[2].device, 1)
+        self.assertEqual(config.jobs[0].work_queue_connections, 3)
+        self.assertEqual(config.lease_timeout, 12.0)
+        self.assertEqual(config.backend, "auto")
 
     def test_requires_complete_memory_limits_on_each_device(self):
         with tempfile.TemporaryDirectory() as root:
@@ -328,6 +343,17 @@ class TestMemoryAndMetrics(unittest.TestCase):
         self.assertEqual(metric["gpu_memory_mib"], 16)
         self.assertEqual(metric["gpu_memory_source"], "pytorch_allocator")
 
+    def test_throughput_metric_retains_samples_for_robust_calibration(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "metric.json"
+            with patch.dict(
+                os.environ, {"NVERTAKE_METRICS_PATH": str(path)}, clear=False
+            ):
+                for value in (10.0, 1000.0, 11.0):
+                    report_throughput(value, unit="steps/s")
+            samples = read_throughput_samples(path)
+        self.assertEqual([item["throughput"] for item in samples], [10.0, 1000.0, 11.0])
+
 
 class TestCalibration(unittest.TestCase):
     def test_adjusts_toward_target_throughput_ratio(self):
@@ -337,6 +363,62 @@ class TestCalibration(unittest.TestCase):
         self.assertLess(adjusted[0], 50)
         self.assertGreater(adjusted[1], 50)
         self.assertAlmostEqual(sum(adjusted), 100.0)
+
+    def test_calibration_uses_sample_median_instead_of_latest_outlier(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            _write_worker(root_path / "a.py")
+            _write_worker(root_path / "b.py")
+            config_path = root_path / "jobs.yaml"
+            config_path.write_text(
+                """jobs:
+  - {name: a, script: a.py, sm_share: 50, target_share: 50}
+  - {name: b, script: b.py, sm_share: 50, target_share: 50}
+""",
+                encoding="utf-8",
+            )
+            config = replace(
+                load_job_config(str(config_path)),
+                calibration=CalibrationSpec(
+                    enabled=True,
+                    rounds=1,
+                    duration=1.0,
+                    tolerance=0.05,
+                    damping=0.5,
+                    warmup=0.0,
+                    minimum_samples=3,
+                    sample_window=10,
+                ),
+            )
+
+            def fake_launch(group, _shares, **kwargs):
+                for index, path in enumerate(kwargs["metrics_paths"]):
+                    values = (1.0, 1000.0, 2.0) if index == 0 else (2.0, 4.0, 3.0)
+                    with patch.dict(
+                        os.environ,
+                        {"NVERTAKE_METRICS_PATH": str(path)},
+                        clear=False,
+                    ):
+                        for value in values:
+                            report_throughput(value, unit="steps/s")
+                return GreenProcessRunResult(
+                    0,
+                    tuple(100 + index for index, _job in enumerate(group)),
+                    tuple(10 for _job in group),
+                    tuple(0 for _job in group),
+                )
+
+            with patch("nvertake.jobs._launch_group", side_effect=fake_launch):
+                _effective, details = _calibrate(
+                    config,
+                    root_path / "run",
+                    quiet=True,
+                    backends={0: "green"},
+                )
+
+        device = details["rounds"][0]["devices"][0]
+        self.assertEqual(device["observed_throughput"], [2.0, 3.0])
+        self.assertEqual(device["throughput_samples"][0]["count"], 3)
 
 
 class TestReportsAndMultiGpuLaunch(unittest.TestCase):
@@ -488,6 +570,64 @@ jobs:
         self.assertEqual(logs[0]["content"], "two\nthree\n")
         self.assertEqual(stopped["pids"], [123, 999])
         self.assertEqual(kill.call_count, 2)
+
+    def test_interrupted_signal_failure_is_recorded_as_cancelled(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            with patch.dict(
+                os.environ,
+                {"NVERTAKE_RUNTIME_DIR": str(root_path / "registry")},
+                clear=False,
+            ):
+                report = RunReport(root_path / "report.json", run_id="cancel-run")
+                report.add_jobs([{"name": "worker", "status": "running"}])
+                report.update_job("worker", status="failed", exit_code=-15)
+                report.mark_jobs_cancelled()
+                snapshot = report.snapshot()
+        self.assertEqual(snapshot["jobs"][0]["status"], "cancelled")
+        self.assertEqual(snapshot["jobs"][0]["exit_code"], -15)
+
+    def test_gpu_lease_rejects_a_second_launcher_and_releases_cleanly(self):
+        with tempfile.TemporaryDirectory() as root:
+            with patch.dict(
+                os.environ,
+                {"NVERTAKE_LEASE_DIR": root},
+                clear=False,
+            ):
+                first = GpuLease(0, run_id="first").acquire()
+                try:
+                    with self.assertRaisesRegex(GpuLeaseError, "run first"):
+                        GpuLease(0, run_id="second").acquire()
+                finally:
+                    first.release()
+                with GpuLease(0, run_id="third"):
+                    pass
+
+    def test_list_refresh_marks_a_disappeared_launcher_and_prunes_missing_report(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            registry = root_path / "registry"
+            with patch.dict(
+                os.environ,
+                {"NVERTAKE_RUNTIME_DIR": str(registry)},
+                clear=False,
+            ):
+                report = RunReport(
+                    root_path / "report.json",
+                    run_id="orphan",
+                    metadata={
+                        "launcher_pid": 99999999,
+                        "launcher_create_time": 1.0,
+                    },
+                )
+                report.add_jobs([{"name": "worker", "status": "running"}])
+                report.set_status("running")
+                refreshed = list_registered_runs(refresh=True)
+                (root_path / "report.json").unlink()
+                self.assertEqual(list_registered_runs(prune=True), [])
+                registry_exists = (registry / "orphan.json").exists()
+        self.assertEqual(refreshed[0]["status"], "failed")
+        self.assertFalse(registry_exists)
 
 
 class TestRemoteOrchestration(unittest.TestCase):
@@ -675,6 +815,62 @@ jobs:
 
         self.assertEqual(config.jobs[0].script, (examples / "worker.py").resolve())
         self.assertEqual(config.jobs[0].host, "host")
+
+    def test_ssh_transport_status_255_is_retried(self):
+        from nvertake.jobs import HostSpec
+
+        host = HostSpec(
+            name="remote",
+            repo="/repo",
+            python="python",
+            ssh="remote.example",
+        )
+        failed = SimpleNamespace(
+            returncode=255,
+            stdout="",
+            stderr="connection reset",
+        )
+        succeeded = SimpleNamespace(
+            returncode=0,
+            stdout='{"ok": true}',
+            stderr="",
+        )
+        with patch(
+            "nvertake.orchestration.subprocess.run",
+            side_effect=[failed, succeeded],
+        ) as run, patch("nvertake.orchestration.time.sleep"):
+            result = call_host(host, "probe", {}, attempts=3)
+        self.assertTrue(result["ok"])
+        self.assertEqual(run.call_count, 2)
+
+    def test_remote_launch_request_reattaches_to_terminal_report(self):
+        from nvertake.remote_agent import _existing_launch
+
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            report_path = repo / ".nvertake" / "runs" / "run" / "report.json"
+            report_path.parent.mkdir(parents=True)
+            report_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "run",
+                        "report_path": str(report_path),
+                        "status": "completed",
+                        "jobs": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = _existing_launch(
+                {
+                    "repo": str(repo),
+                    "report_path": str(report_path),
+                    "run_id": "run",
+                }
+            )
+        self.assertTrue(result["reattached"])
+        self.assertEqual(result["exit_code"], 0)
 
 
 if __name__ == "__main__":

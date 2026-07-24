@@ -9,11 +9,12 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 _METRICS_ENV = "NVERTAKE_METRICS_PATH"
 _MIB = 1024 * 1024
+_MAX_SAMPLES = 256
 
 
 def _utc_now() -> str:
@@ -73,16 +74,48 @@ def report_throughput(
     raw_path = os.environ.get(_METRICS_ENV)
     if not raw_path:
         return False
-    payload: Dict[str, Any] = {
+    sample: Dict[str, Any] = {
         "throughput": numeric_value,
         "unit": unit.strip(),
         "pid": os.getpid(),
         "updated_at": _utc_now(),
         "monotonic_time": time.monotonic(),
     }
-    payload.update(_pytorch_memory_snapshot())
+    sample.update(_pytorch_memory_snapshot())
     if metadata:
-        payload["metadata"] = metadata
+        sample["metadata"] = metadata
+    previous = read_throughput_metric(Path(raw_path))
+    samples = []
+    if (
+        previous is not None
+        and previous.get("pid") == sample["pid"]
+        and previous.get("unit") == sample["unit"]
+    ):
+        raw_samples = previous.get("samples")
+        if isinstance(raw_samples, list):
+            samples = [item for item in raw_samples if isinstance(item, dict)]
+        else:
+            samples = [
+                {
+                    key: previous[key]
+                    for key in (
+                        "throughput",
+                        "unit",
+                        "pid",
+                        "updated_at",
+                        "monotonic_time",
+                        "gpu_memory_mib",
+                        "gpu_memory_source",
+                        "pytorch_allocated_memory_mib",
+                        "pytorch_reserved_memory_mib",
+                        "metadata",
+                    )
+                    if key in previous
+                }
+            ]
+    samples.append(dict(sample))
+    payload = dict(sample)
+    payload["samples"] = samples[-_MAX_SAMPLES:]
     _atomic_write_json(Path(raw_path), payload)
     return True
 
@@ -105,3 +138,28 @@ def read_throughput_metric(path: Path) -> Optional[Dict[str, Any]]:
         return None
     payload["throughput"] = value
     return payload
+
+
+def read_throughput_samples(path: Path) -> Tuple[Dict[str, Any], ...]:
+    """Return all valid retained samples, including legacy single-value files."""
+
+    payload = read_throughput_metric(path)
+    if payload is None:
+        return ()
+    raw_samples = payload.get("samples")
+    candidates = raw_samples if isinstance(raw_samples, list) else [payload]
+    samples = []
+    for raw in candidates:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            value = float(raw["throughput"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        unit = raw.get("unit")
+        if not math.isfinite(value) or value < 0 or not isinstance(unit, str):
+            continue
+        sample = dict(raw)
+        sample["throughput"] = value
+        samples.append(sample)
+    return tuple(samples)

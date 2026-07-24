@@ -385,7 +385,7 @@ class TestCalibration(unittest.TestCase):
                     duration=1.0,
                     tolerance=0.05,
                     damping=0.5,
-                    warmup=0.0,
+                    warmup=0.5,
                     minimum_samples=3,
                     sample_window=10,
                 ),
@@ -419,6 +419,7 @@ class TestCalibration(unittest.TestCase):
         device = details["rounds"][0]["devices"][0]
         self.assertEqual(device["observed_throughput"], [2.0, 3.0])
         self.assertEqual(device["throughput_samples"][0]["count"], 3)
+        self.assertTrue(device["throughput_samples"][0]["warmup_fallback"])
 
 
 class TestReportsAndMultiGpuLaunch(unittest.TestCase):

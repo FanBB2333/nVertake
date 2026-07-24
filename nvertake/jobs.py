@@ -67,9 +67,10 @@ class CalibrationSpec:
     duration: float = 5.0
     tolerance: float = 0.05
     damping: float = 0.5
-    warmup: float = 0.5
-    minimum_samples: int = 3
+    warmup: float = 0.0
+    minimum_samples: int = 1
     sample_window: int = 20
+    timeout_grace: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -242,9 +243,10 @@ def _parse_calibration(value: Any) -> CalibrationSpec:
     duration = float(mapping.get("duration", 5.0))
     tolerance = float(mapping.get("tolerance", 0.05))
     damping = float(mapping.get("damping", 0.5))
-    warmup = float(mapping.get("warmup", 0.5))
-    minimum_samples = int(mapping.get("minimum_samples", 3))
+    warmup = float(mapping.get("warmup", 0.0))
+    minimum_samples = int(mapping.get("minimum_samples", 1))
     sample_window = int(mapping.get("sample_window", 20))
+    timeout_grace = float(mapping.get("timeout_grace", 10.0))
     if rounds <= 0:
         raise ValueError("calibration.rounds must be positive")
     if not math.isfinite(duration) or duration <= 0:
@@ -261,6 +263,8 @@ def _parse_calibration(value: Any) -> CalibrationSpec:
         raise ValueError(
             "calibration.sample_window must be at least calibration.minimum_samples"
         )
+    if not math.isfinite(timeout_grace) or timeout_grace < 0:
+        raise ValueError("calibration.timeout_grace must be non-negative")
     return CalibrationSpec(
         enabled,
         rounds,
@@ -270,6 +274,7 @@ def _parse_calibration(value: Any) -> CalibrationSpec:
         warmup,
         minimum_samples,
         sample_window,
+        timeout_grace,
     )
 
 
@@ -868,7 +873,11 @@ def _launch_group(
         "log_paths": log_paths,
         "job_names": [job.name for job in group],
         "metrics_paths": metrics_paths,
-        "run_timeout": (calibration.duration if calibration is not None else None),
+        "run_timeout": (
+            calibration.duration + calibration.timeout_grace
+            if calibration is not None
+            else None
+        ),
         "timeout_is_success": (calibration is not None),
         "on_ready": on_ready,
         "on_exit": on_exit,
@@ -1051,12 +1060,17 @@ def _calibrate(
                     ]
                 else:
                     warmed = []
-                selected = warmed[-calibration.sample_window :]
+                warmup_fallback = (
+                    calibration.warmup > 0
+                    and len(warmed) < calibration.minimum_samples
+                )
+                retained = samples if warmup_fallback else warmed
+                selected = retained[-calibration.sample_window :]
                 if len(selected) < calibration.minimum_samples:
                     raise RuntimeError(
                         f"GPU {device} calibration requires at least "
-                        f"{calibration.minimum_samples} throughput samples per job "
-                        f"after warmup; received {len(selected)}"
+                        f"{calibration.minimum_samples} retained throughput samples "
+                        f"per job; received {len(selected)}"
                     )
                 values = [float(sample["throughput"]) for sample in selected]
                 median = float(statistics.median(values))
@@ -1068,6 +1082,7 @@ def _calibrate(
                         "count": len(selected),
                         "median": median,
                         "median_absolute_deviation": mad,
+                        "warmup_fallback": warmup_fallback,
                         "first_updated_at": selected[0].get("updated_at"),
                         "last_updated_at": selected[-1].get("updated_at"),
                     }
@@ -1119,6 +1134,7 @@ def _calibrate(
         "warmup": calibration.warmup,
         "minimum_samples": calibration.minimum_samples,
         "sample_window": calibration.sample_window,
+        "timeout_grace": calibration.timeout_grace,
         "rounds": records,
         "final_sm_shares": dict(effective),
     }

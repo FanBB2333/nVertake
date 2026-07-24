@@ -27,16 +27,18 @@ def main() -> None:
     started = time.monotonic()
     completed = 0
     next_report = started + 0.5
-    while time.monotonic() - started < seconds:
-        torch.mm(left, right, out=output)
-        completed += 1
+    while True:
+        for _ in range(64):
+            torch.mm(left, right, out=output)
+            completed += 1
+        torch.cuda.synchronize()
         now = time.monotonic()
         if now >= next_report:
-            torch.cuda.synchronize()
-            report_throughput(completed / (time.monotonic() - started), unit="GEMM/s")
+            report_throughput(completed / (now - started), unit="GEMM/s")
             next_report = now + 0.5
+        if now - started >= seconds:
+            break
 
-    torch.cuda.synchronize()
     elapsed = time.monotonic() - started
     throughput = completed / elapsed
     report_throughput(throughput, unit="GEMM/s")

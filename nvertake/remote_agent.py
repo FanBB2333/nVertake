@@ -144,9 +144,10 @@ def _calibration(payload: Mapping[str, Any]) -> CalibrationSpec:
         duration=float(payload.get("duration", 5.0)),
         tolerance=float(payload.get("tolerance", 0.05)),
         damping=float(payload.get("damping", 0.5)),
-        warmup=float(payload.get("warmup", 0.5)),
-        minimum_samples=int(payload.get("minimum_samples", 3)),
+        warmup=float(payload.get("warmup", 0.0)),
+        minimum_samples=int(payload.get("minimum_samples", 1)),
         sample_window=int(payload.get("sample_window", 20)),
+        timeout_grace=float(payload.get("timeout_grace", 10.0)),
     )
 
 

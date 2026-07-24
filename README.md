@@ -241,13 +241,18 @@ calibration:
   warmup: 0.5
   minimum_samples: 3
   sample_window: 20
+  timeout_grace: 10
 ```
 
 During each round nVertake sets `NVERTAKE_CALIBRATION=1` and
 `NVERTAKE_CALIBRATION_SECONDS`, retains timestamped values from every job,
 discards the configured warmup interval, and uses the median of the latest
 sample window. The report records the sample count and median absolute
-deviation. It then compares normalized throughput with each job's
+deviation. If the warmup leaves fewer than `minimum_samples`, the round uses
+all retained samples and records `warmup_fallback: true`. The launcher allows
+`timeout_grace` seconds beyond the requested workload duration for imports,
+allocations, and workload-side warmup. It then compares normalized throughput
+with each job's
 `target_share` (or `sm_share`) and applies a damped correction before the real
 launch. Optional
 `calibration_args` are appended only during those rounds. Calibration fails

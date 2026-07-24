@@ -12,13 +12,14 @@ defaults:
 
 calibration:
   enabled: true
-  duration: 3
+  duration: 5
   rounds: 2
   tolerance: 0.01
   damping: 0.7
   warmup: 0.5
   minimum_samples: 3
   sample_window: 10
+  timeout_grace: 10
 
 jobs:
   - name: calibration-small

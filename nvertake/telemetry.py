@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import shutil
 import subprocess
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -209,6 +210,11 @@ def inspect_telemetry_capabilities(device: int = 0) -> Dict[str, Any]:
             )
         except (subprocess.SubprocessError, OSError) as exc:
             pmon_detail = str(exc)
+    if "microsoft" in platform.release().lower():
+        pmon = False
+        pmon_detail = (
+            "nvidia-smi pmon does not expose per-process utilization inside WSL"
+        )
 
     dcgm_profile = False
     dcgm_detail = "dcgmi was not found"

@@ -113,7 +113,8 @@ nvertake stop RUN_ID
 
 The monitor reports the job name, physical GPU, PID, assigned SM count,
 framebuffer memory, latest workload throughput, and state. `--profile` also
-samples per-process SM/memory utilization with `nvidia-smi pmon`, device-wide
+samples per-process SM/memory utilization with `nvidia-smi pmon` when exposed
+by the platform, plus device-wide
 utilization, clocks, power, and temperature. When DCGM profiling is loaded, the
 JSON includes SM Active, SM Occupancy, Tensor, DRAM, FP32, and FP16 activity;
 otherwise it includes the exact unavailable reason instead of inventing a

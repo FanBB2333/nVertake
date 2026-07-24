@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from nvertake.telemetry import (
+    inspect_telemetry_capabilities,
     query_dcgm_profile,
     query_device_utilization,
     query_process_utilization,
@@ -64,6 +65,32 @@ class TestTelemetry(unittest.TestCase):
             record = query_dcgm_profile(0)
         self.assertFalse(record["available"])
         self.assertIn("not loaded", record["detail"])
+
+    def test_wsl_capability_does_not_claim_per_process_pmon(self):
+        completed = subprocess.CompletedProcess(
+            ["nvidia-smi", "pmon", "-h"],
+            0,
+            stdout="pmon help",
+            stderr="",
+        )
+        with patch(
+            "nvertake.telemetry.shutil.which",
+            side_effect=(
+                lambda name: (
+                    "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None
+                )
+            ),
+        ), patch(
+            "nvertake.telemetry.subprocess.run",
+            return_value=completed,
+        ), patch(
+            "nvertake.telemetry.platform.release",
+            return_value="6.1.0-microsoft-standard-WSL2",
+        ):
+            capabilities = inspect_telemetry_capabilities(0)
+        process = capabilities["process_utilization"]
+        self.assertFalse(process["available"])
+        self.assertIn("WSL", process["detail"])
 
 
 if __name__ == "__main__":
